@@ -83,12 +83,17 @@
 <script>
 function loadPCData() {
     fetch(`/api/pcs/{{ pc.pc_id }}`, {
-        headers: {
-            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
-        }
+        credentials: 'include'
     })
-    .then(r => r.json())
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        return r.json();
+    })
     .then(data => {
+        if (!data) return;
         // Эталонная конфигурация
         const baseline = data.baseline_config;
         if (baseline) {
@@ -110,26 +115,169 @@ function loadPCData() {
 function formatConfig(config) {
     let html = '<dl class="row">';
     
-    const components = {
-        'motherboard': 'Материнская плата',
-        'cpu': 'Процессор',
-        'ram_modules': 'Оперативная память',
-        'storage_devices': 'Накопители',
-        'gpu': 'Видеокарта',
-        'network_adapters': 'Сетевые адаптеры',
-        'psu': 'Блок питания'
-    };
-    
-    for (const [key, label] of Object.entries(components)) {
-        const value = config[key];
-        if (value) {
-            html += `<dt class="col-sm-4">${label}:</dt>`;
-            if (Array.isArray(value)) {
-                html += `<dd class="col-sm-8">${value.length} шт.</dd>`;
-            } else if (typeof value === 'object') {
-                html += `<dd class="col-sm-8">${value.model || value.name || 'N/A'}</dd>`;
-            }
+    // Материнская плата
+    if (config.motherboard) {
+        const mb = config.motherboard;
+        html += '<dt class="col-sm-4">Материнская плата:</dt>';
+        html += '<dd class="col-sm-8">';
+        if (mb.manufacturer && mb.product) {
+            html += `${mb.manufacturer} ${mb.product}`;
+        } else if (mb.model) {
+            html += mb.model;
+        } else {
+            html += 'N/A';
         }
+        html += '</dd>';
+    }
+    
+    // Процессор
+    if (config.cpu) {
+        const cpu = config.cpu;
+        html += '<dt class="col-sm-4">Процессор:</dt>';
+        html += '<dd class="col-sm-8">';
+        if (cpu.name) {
+            html += cpu.name;
+        } else if (cpu.model) {
+            html += cpu.model;
+        } else {
+            html += 'N/A';
+        }
+        if (cpu.cores && cpu.threads) {
+            html += ` (${cpu.cores} ядер / ${cpu.threads} потоков)`;
+        }
+        html += '</dd>';
+    }
+    
+    // Оперативная память
+    if (config.ram_modules && config.ram_modules.length > 0) {
+        html += '<dt class="col-sm-4">Оперативная память:</dt>';
+        html += '<dd class="col-sm-8">';
+        
+        // Подсчитываем общий объем
+        const totalRAM = config.ram_modules.reduce((sum, module) => {
+            return sum + (module.size_gb || 0);
+        }, 0);
+        
+        if (totalRAM > 0) {
+            html += `<strong>${totalRAM} GB</strong>`;
+        }
+        
+        html += ` (${config.ram_modules.length} модул${config.ram_modules.length > 1 ? 'ей' : 'ь'})`;
+        
+        // Детали по каждому модулю
+        html += '<ul class="list-unstyled mt-2 mb-0">';
+        config.ram_modules.forEach((module, index) => {
+            html += '<li class="small text-muted">';
+            html += `Модуль ${index + 1}: `;
+            if (module.size_gb) {
+                html += `${module.size_gb} GB`;
+            }
+            if (module.speed) {
+                html += ` @ ${module.speed}`;
+            }
+            if (module.model) {
+                html += ` (${module.model})`;
+            }
+            html += '</li>';
+        });
+        html += '</ul>';
+        
+        html += '</dd>';
+    }
+    
+    // Накопители
+    if (config.storage_devices && config.storage_devices.length > 0) {
+        html += '<dt class="col-sm-4">Накопители:</dt>';
+        html += '<dd class="col-sm-8">';
+        
+        // Подсчитываем общий объем
+        const totalStorage = config.storage_devices.reduce((sum, device) => {
+            return sum + (device.size_gb || 0);
+        }, 0);
+        
+        if (totalStorage > 0) {
+            html += `<strong>${totalStorage} GB</strong>`;
+        }
+        
+        html += ` (${config.storage_devices.length} устройств${config.storage_devices.length > 1 ? '' : 'о'})`;
+        
+        // Детали по каждому накопителю
+        html += '<ul class="list-unstyled mt-2 mb-0">';
+        config.storage_devices.forEach((device, index) => {
+            html += '<li class="small text-muted">';
+            html += `Диск ${index + 1}: `;
+            if (device.size_gb) {
+                html += `${device.size_gb} GB`;
+            }
+            if (device.type) {
+                html += ` (${device.type})`;
+            }
+            if (device.interface) {
+                html += ` ${device.interface}`;
+            }
+            if (device.model) {
+                html += ` - ${device.model}`;
+            }
+            html += '</li>';
+        });
+        html += '</ul>';
+        
+        html += '</dd>';
+    }
+    
+    // Видеокарта
+    if (config.gpu) {
+        const gpu = config.gpu;
+        html += '<dt class="col-sm-4">Видеокарта:</dt>';
+        html += '<dd class="col-sm-8">';
+        if (gpu.name) {
+            html += gpu.name;
+        } else if (gpu.model) {
+            html += gpu.model;
+        } else {
+            html += 'N/A';
+        }
+        if (gpu.memory_gb) {
+            html += ` (${gpu.memory_gb} GB)`;
+        }
+        html += '</dd>';
+    }
+    
+    // Сетевые адаптеры
+    if (config.network_adapters && config.network_adapters.length > 0) {
+        html += '<dt class="col-sm-4">Сетевые адаптеры:</dt>';
+        html += '<dd class="col-sm-8">';
+        html += `<ul class="list-unstyled mb-0">`;
+        config.network_adapters.forEach(adapter => {
+            html += '<li class="small">';
+            if (adapter.name) {
+                html += adapter.name;
+            } else {
+                html += 'Сетевой адаптер';
+            }
+            if (adapter.mac_address) {
+                html += ` <span class="text-muted">(${adapter.mac_address})</span>`;
+            }
+            html += '</li>';
+        });
+        html += '</ul>';
+        html += '</dd>';
+    }
+    
+    // Блок питания
+    if (config.psu) {
+        const psu = config.psu;
+        html += '<dt class="col-sm-4">Блок питания:</dt>';
+        html += '<dd class="col-sm-8">';
+        if (psu.model) {
+            html += psu.model;
+        } else {
+            html += 'N/A';
+        }
+        if (psu.wattage) {
+            html += ` <span class="text-muted">(${psu.wattage} W)</span>`;
+        }
+        html += '</dd>';
     }
     
     html += '</dl>';
@@ -138,12 +286,17 @@ function formatConfig(config) {
 
 function loadEvents() {
     fetch(`/api/pcs/{{ pc.pc_id }}/events`, {
-        headers: {
-            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
-        }
+        credentials: 'include'
     })
-    .then(r => r.json())
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        return r.json();
+    })
     .then(data => {
+        if (!data) return;
         const tbody = document.getElementById('events-tbody');
         tbody.innerHTML = '';
         
@@ -188,12 +341,17 @@ function setBaseline() {
     
     fetch(`/api/pcs/{{ pc.pc_id }}/baseline`, {
         method: 'POST',
-        headers: {
-            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
-        }
+        credentials: 'include'
     })
-    .then(r => r.json())
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        return r.json();
+    })
     .then(data => {
+        if (!data) return;
         alert('Эталонная конфигурация обновлена');
         loadPCData();
         loadEvents();

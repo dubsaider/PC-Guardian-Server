@@ -30,8 +30,6 @@ class PC(Base):
     """Модель ПК"""
     __tablename__ = 'pcs'
     
-    __tablename__ = 'pcs'
-    
     id = Column(Integer, primary_key=True)
     pc_id = Column(String(255), unique=True, nullable=False, index=True)
     hostname = Column(String(255), nullable=False)
@@ -40,8 +38,8 @@ class PC(Base):
     status = Column(String(50), default='unknown')  # unknown, normal, changed, offline
     
     # Связи
-    configurations = db.relationship('PCConfiguration', backref='pc', lazy=True, cascade='all, delete-orphan')
-    events = db.relationship('ChangeEvent', backref='pc', lazy=True, cascade='all, delete-orphan')
+    configurations = relationship('PCConfiguration', backref='pc', lazy=True, cascade='all, delete-orphan')
+    events = relationship('ChangeEvent', backref='pc', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -56,8 +54,6 @@ class PC(Base):
 
 class PCConfiguration(Base):
     """Модель конфигурации ПК"""
-    __tablename__ = 'pc_configurations'
-    
     __tablename__ = 'pc_configurations'
     
     id = Column(Integer, primary_key=True)
@@ -103,8 +99,6 @@ class PCConfiguration(Base):
 
 class ChangeEvent(Base):
     """Модель события изменения конфигурации"""
-    __tablename__ = 'change_events'
-    
     __tablename__ = 'change_events'
     
     id = Column(Integer, primary_key=True)

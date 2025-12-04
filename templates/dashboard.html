@@ -95,16 +95,22 @@ let currentStatus = 'all';
 
 function loadStats() {
     fetch('/api/stats', {
-        headers: {
-            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
-        }
+        credentials: 'include'
     })
-    .then(r => r.json())
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        return r.json();
+    })
     .then(data => {
-        document.getElementById('total-pcs').textContent = data.total_pcs;
-        document.getElementById('normal-pcs').textContent = data.normal_pcs;
-        document.getElementById('changed-pcs').textContent = data.changed_pcs;
-        document.getElementById('offline-pcs').textContent = data.offline_pcs;
+        if (data) {
+            document.getElementById('total-pcs').textContent = data.total_pcs;
+            document.getElementById('normal-pcs').textContent = data.normal_pcs;
+            document.getElementById('changed-pcs').textContent = data.changed_pcs;
+            document.getElementById('offline-pcs').textContent = data.offline_pcs;
+        }
     });
 }
 
@@ -115,12 +121,17 @@ function loadPCs(status = 'all') {
     }
     
     fetch(url, {
-        headers: {
-            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
-        }
+        credentials: 'include'
     })
-    .then(r => r.json())
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        return r.json();
+    })
     .then(data => {
+        if (!data) return;
         const tbody = document.getElementById('pcs-tbody');
         tbody.innerHTML = '';
         

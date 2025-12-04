@@ -57,85 +57,85 @@ class PCGuardianConsumer:
         """Обработать полученную конфигурацию"""
         db = SessionLocal()
         try:
-                # Парсим конфигурацию
-                config = PCConfiguration.from_dict(config_data)
+            # Парсим конфигурацию
+            config = PCConfiguration.from_dict(config_data)
+            
+            # Проверяем, существует ли ПК
+            pc = db.query(PC).filter_by(pc_id=config.pc_id).first()
+            
+            if not pc:
+                # Регистрируем новый ПК
+                pc = PC(
+                    pc_id=config.pc_id,
+                    hostname=config.hostname,
+                    status='normal'
+                )
+                db.add(pc)
+                db.flush()
                 
-                # Проверяем, существует ли ПК
-                pc = db.query(PC).filter_by(pc_id=config.pc_id).first()
+                # Создаем эталонную конфигурацию
+                baseline = self._create_db_configuration(pc.pc_id, config, is_baseline=True)
+                db.add(baseline)
                 
-                if not pc:
-                    # Регистрируем новый ПК
-                    pc = PC(
-                        pc_id=config.pc_id,
-                        hostname=config.hostname,
-                        status='normal'
-                    )
-                    db.add(pc)
-                    db.flush()
+                self.logger.info(f"Зарегистрирован новый ПК: {config.pc_id} ({config.hostname})")
+            else:
+                # Обновляем время последнего контакта
+                pc.last_seen = config.timestamp
+                
+                # Получаем эталонную конфигурацию
+                baseline = db.query(DBPCConfiguration).filter_by(
+                    pc_id=pc.pc_id,
+                    is_baseline=True
+                ).first()
+                
+                if baseline:
+                    # Сравниваем с эталонной
+                    current_db_config = self._create_db_configuration(pc.pc_id, config, is_baseline=False)
+                    events = self.comparator.compare_configurations(baseline, current_db_config)
                     
-                    # Создаем эталонную конфигурацию
+                    if events:
+                        # Есть изменения
+                        pc.status = 'changed'
+                        
+                        # Сохраняем события
+                        for event in events:
+                            db_event = ChangeEvent(
+                                pc_id=pc.pc_id,
+                                component_type=event.component_type,
+                                event_type=event.event_type,
+                                timestamp=event.timestamp,
+                                details=event.details
+                            )
+                            db_event.set_old_value(event.old_value)
+                            db_event.set_new_value(event.new_value)
+                            db.add(db_event)
+                            
+                            # Отправляем уведомление
+                            self.notification_service.send_alert(pc, event)
+                        
+                        self.logger.warning(
+                            f"Обнаружены изменения на ПК {config.pc_id}: {len(events)} событий"
+                        )
+                    else:
+                        # Изменений нет
+                        pc.status = 'normal'
+                    
+                    # Сохраняем текущую конфигурацию
+                    db.add(current_db_config)
+                else:
+                    # Нет эталонной конфигурации, создаем её
                     baseline = self._create_db_configuration(pc.pc_id, config, is_baseline=True)
                     db.add(baseline)
-                    
-                    self.logger.info(f"Зарегистрирован новый ПК: {config.pc_id} ({config.hostname})")
-                else:
-                    # Обновляем время последнего контакта
-                    pc.last_seen = config.timestamp
-                    
-                    # Получаем эталонную конфигурацию
-                    baseline = db.query(DBPCConfiguration).filter_by(
-                        pc_id=pc.pc_id,
-                        is_baseline=True
-                    ).first()
-                    
-                    if baseline:
-                        # Сравниваем с эталонной
-                        current_db_config = self._create_db_configuration(pc.pc_id, config, is_baseline=False)
-                        events = self.comparator.compare_configurations(baseline, current_db_config)
-                        
-                        if events:
-                            # Есть изменения
-                            pc.status = 'changed'
-                            
-                            # Сохраняем события
-                            for event in events:
-                                db_event = ChangeEvent(
-                                    pc_id=pc.pc_id,
-                                    component_type=event.component_type,
-                                    event_type=event.event_type,
-                                    timestamp=event.timestamp,
-                                    details=event.details
-                                )
-                                db_event.set_old_value(event.old_value)
-                                db_event.set_new_value(event.new_value)
-                                db.add(db_event)
-                                
-                                # Отправляем уведомление
-                                self.notification_service.send_alert(pc, event)
-                            
-                            self.logger.warning(
-                                f"Обнаружены изменения на ПК {config.pc_id}: {len(events)} событий"
-                            )
-                        else:
-                            # Изменений нет
-                            pc.status = 'normal'
-                        
-                        # Сохраняем текущую конфигурацию
-                        db.add(current_db_config)
-                    else:
-                        # Нет эталонной конфигурации, создаем её
-                        baseline = self._create_db_configuration(pc.pc_id, config, is_baseline=True)
-                        db.add(baseline)
-                        pc.status = 'normal'
-                        self.logger.info(f"Создана эталонная конфигурация для ПК: {config.pc_id}")
-                
-                db.commit()
-                
-            except Exception as e:
-                self.logger.error(f"Ошибка обработки конфигурации: {e}", exc_info=True)
-                db.rollback()
-            finally:
-                db.close()
+                    pc.status = 'normal'
+                    self.logger.info(f"Создана эталонная конфигурация для ПК: {config.pc_id}")
+            
+            db.commit()
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка обработки конфигурации: {e}", exc_info=True)
+            db.rollback()
+        finally:
+            db.close()
     
     def _create_db_configuration(self, pc_id: str, config: PCConfiguration, is_baseline: bool) -> DBPCConfiguration:
         """Создать объект конфигурации для БД"""

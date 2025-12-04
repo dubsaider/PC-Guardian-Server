@@ -4,17 +4,17 @@ FastAPI приложение для PC-Guardian Server
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime, timedelta
 
 from database import get_db, Base, engine, PC, PCConfiguration, ChangeEvent, User
 from kafka_consumer import PCGuardianConsumer
 from common.kafka_config import KafkaConfig
-from auth import get_current_user, create_user, verify_password, get_password_hash
+from auth import get_current_user, verify_password, create_access_token
 
 # Создаем таблицы БД
 Base.metadata.create_all(bind=engine)
@@ -56,6 +56,7 @@ if os.path.exists("static"):
 
 @app.get("/api/pcs", response_class=JSONResponse)
 async def get_pcs(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     status: Optional[str] = None,
@@ -80,6 +81,7 @@ async def get_pcs(
 @app.get("/api/pcs/{pc_id}", response_class=JSONResponse)
 async def get_pc(
     pc_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -110,6 +112,7 @@ async def get_pc(
 @app.get("/api/pcs/{pc_id}/events", response_class=JSONResponse)
 async def get_pc_events(
     pc_id: str,
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -131,6 +134,7 @@ async def get_pc_events(
 @app.post("/api/pcs/{pc_id}/baseline", response_class=JSONResponse)
 async def set_baseline(
     pc_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -168,6 +172,7 @@ async def set_baseline(
 
 @app.get("/api/events", response_class=JSONResponse)
 async def get_events(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     pc_id: Optional[str] = None,
@@ -194,6 +199,7 @@ async def get_events(
 
 @app.get("/api/stats", response_class=JSONResponse)
 async def get_stats(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -254,8 +260,17 @@ async def events_page(
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
+async def login_page(request: Request, db: Session = Depends(get_db)):
     """Страница входа"""
+    # Проверяем, есть ли уже активная сессия
+    from auth import get_user_from_token
+    
+    session_token = request.cookies.get("session_token")
+    if session_token:
+        user = get_user_from_token(session_token, db)
+        if user:
+            return RedirectResponse(url="/", status_code=303)
+    
     template = templates.get_template("login.html")
     return HTMLResponse(template.render(request=request))
 
@@ -271,8 +286,31 @@ async def login(
     if not user or not verify_password(password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    # В реальном приложении здесь должна быть установка сессии/JWT токена
-    return {"message": "Login successful", "user": user.username}
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="User is inactive")
+    
+    # Создаем JWT токен
+    access_token = create_access_token(data={"sub": user.username})
+    
+    # Создаем ответ с редиректом
+    response = RedirectResponse(url="/", status_code=303)
+    # Устанавливаем cookie с токеном
+    response.set_cookie(
+        key="session_token",
+        value=access_token,
+        max_age=24 * 60 * 60,  # 24 часа
+        httponly=True,
+        samesite="lax"
+    )
+    
+    return response
+
+@app.get("/logout")
+async def logout():
+    """Выход из системы"""
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(key="session_token")
+    return response
 
 
 if __name__ == "__main__":

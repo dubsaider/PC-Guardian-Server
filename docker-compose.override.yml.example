@@ -1,9 +1,14 @@
 # Пример файла для переопределения настроек в docker-compose.yml
 # Скопируйте этот файл в docker-compose.override.yml и настройте под свои нужды
 
-version: '3.8'
-
 services:
+  kafka:
+    environment:
+      # IP адрес хоста для внешнего доступа к Kafka (если нужно переопределить значение по умолчанию)
+      # По умолчанию используется: 10.53.16.49
+      # Узнать IP: Windows: ipconfig, Linux/Mac: hostname -I или ifconfig
+      KAFKA_ADVERTISED_HOST: 10.53.16.49
+  
   server:
     environment:
       # Использование PostgreSQL вместо SQLite

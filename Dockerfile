@@ -19,7 +19,8 @@ COPY . .
 
 # Копирование entrypoint скрипта
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh && \
+    sed -i 's/\r$//' /docker-entrypoint.sh || true
 
 # Создание директории для БД
 RUN mkdir -p /app/data /app/logs
@@ -28,7 +29,7 @@ RUN mkdir -p /app/data /app/logs
 EXPOSE 8000
 
 # Entrypoint
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]
 
 # Команда запуска
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

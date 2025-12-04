@@ -63,12 +63,17 @@ function loadEvents(pcId = null, componentType = null) {
     if (componentType) url += '&component_type=' + componentType;
     
     fetch(url, {
-        headers: {
-            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
-        }
+        credentials: 'include'
     })
-    .then(r => r.json())
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        return r.json();
+    })
     .then(data => {
+        if (!data) return;
         const tbody = document.getElementById('events-tbody');
         tbody.innerHTML = '';
         

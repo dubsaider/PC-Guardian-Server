@@ -18,13 +18,7 @@
 pip install -r requirements.txt
 ```
 
-3. Настройте переменные окружения:
-```bash
-cp .env.example .env
-# Отредактируйте .env файл
-```
-
-4. Инициализируйте базу данных:
+3. Инициализируйте базу данных:
 ```bash
 python init_db.py
 ```
@@ -41,12 +35,22 @@ DATABASE_URL=postgresql://user:password@localhost/pcguardian
 
 ### Kafka
 
-Настройте подключение к Kafka в `.env` или `config.json`:
+Настройте подключение к Kafka через переменные окружения (в `docker-compose.yml` или `.env`):
 
 ```env
-KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+KAFKA_BOOTSTRAP_SERVERS=10.53.16.49:9092
 KAFKA_TOPIC=pc-guardian-configs
 KAFKA_SECURITY_PROTOCOL=PLAINTEXT
+```
+
+При использовании Docker Compose все настройки уже заданы в `docker-compose.yml`. По умолчанию используется IP адрес `10.53.16.49` для внешнего доступа к Kafka.
+
+Если нужно изменить IP адрес, создайте файл `docker-compose.override.yml` и укажите другой адрес:
+```yaml
+services:
+  kafka:
+    environment:
+      KAFKA_ADVERTISED_HOST: ваш_ip_адрес
 ```
 
 ### Уведомления
@@ -92,7 +96,7 @@ docker-compose logs -f server
 Сервисы будут доступны:
 - **Server**: http://localhost:8000
 - **Kafka UI**: http://localhost:8080 (мониторинг Kafka)
-- **Kafka**: localhost:9092
+- **Kafka**: 10.53.16.49:9092 (для внешних клиентов)
 
 ### Локальный запуск
 
@@ -117,6 +121,20 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 
 **Важно:** Измените пароли после первого входа!
 
+### Создание пользователей вручную
+
+Если пользователи не были созданы автоматически, используйте скрипт:
+
+```bash
+# Локально
+python scripts/add_user.py
+
+# В Docker контейнере
+docker-compose exec server python /app/scripts/add_user.py
+```
+
+См. `scripts/README.md` для подробной информации.
+
 ## API Endpoints
 
 ### Web Interface
@@ -135,7 +153,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ## Структура проекта
 
 ```
-Server/
+PC-Guardian-Server/
 ├── app.py                 # FastAPI приложение
 ├── database.py            # Модели БД
 ├── kafka_consumer.py      # Kafka Consumer
@@ -146,11 +164,18 @@ Server/
 ├── common/                # Общие модули
 │   ├── models.py
 │   └── kafka_config.py
-└── templates/             # HTML шаблоны
-    ├── base.html
-    ├── dashboard.html
-    ├── pc_detail.html
-    └── events.html
+├── scripts/               # Утилиты
+│   ├── add_user.py        # Добавление пользователей
+│   └── README.md
+├── templates/             # HTML шаблоны
+│   ├── base.html
+│   ├── dashboard.html
+│   ├── pc_detail.html
+│   ├── events.html
+│   └── login.html
+├── docker-compose.yml     # Docker Compose конфигурация
+├── Dockerfile             # Docker образ
+└── requirements.txt       # Python зависимости
 ```
 
 ## Docker Compose

@@ -1,8 +1,14 @@
 """
 Скрипт инициализации базы данных
 """
+import bcrypt
 from database import Base, engine, SessionLocal, User
-from auth import get_password_hash
+
+def get_password_hash(password: str) -> str:
+    """Получить хеш пароля через bcrypt"""
+    password_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password_bytes, salt).decode('utf-8')
 
 def init_db():
     """Инициализировать базу данных"""

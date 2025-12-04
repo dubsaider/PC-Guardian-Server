@@ -15,7 +15,10 @@ class KafkaConfig:
         Args:
             config_file: Путь к файлу конфигурации (опционально)
         """
-        self.bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+        # Получаем адрес Kafka - должен быть задан через переменную окружения
+        # Для Docker: используется внутренний адрес kafka:29092
+        # Для внешних клиентов: используйте IP адрес хоста вместо localhost
+        self.bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'kafka:29092')
         self.topic = os.getenv('KAFKA_TOPIC', 'pc-guardian-configs')
         self.security_protocol = os.getenv('KAFKA_SECURITY_PROTOCOL', 'PLAINTEXT')
         self.ssl_cafile = os.getenv('KAFKA_SSL_CAFILE', None)
