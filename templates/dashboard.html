@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Дашборд - PC-Guardian{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-speedometer2"></i> Дашборд</h1>
+    </div>
+</div>
+
+<!-- Статистика -->
+<div class="row mb-4" id="stats">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">Всего ПК</h5>
+                <h2 id="total-pcs">-</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">В норме</h5>
+                <h2 id="normal-pcs">-</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <h5 class="card-title">Изменения</h5>
+                <h2 id="changed-pcs">-</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-danger">
+            <div class="card-body">
+                <h5 class="card-title">Нет связи</h5>
+                <h2 id="offline-pcs">-</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Фильтры -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-primary active" data-status="all">Все</button>
+            <button type="button" class="btn btn-outline-success" data-status="normal">В норме</button>
+            <button type="button" class="btn btn-outline-warning" data-status="changed">Изменения</button>
+            <button type="button" class="btn btn-outline-danger" data-status="offline">Нет связи</button>
+        </div>
+    </div>
+</div>
+
+<!-- Таблица ПК -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Список ПК</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="pcs-table">
+                        <thead>
+                            <tr>
+                                <th>PC ID</th>
+                                <th>Имя хоста</th>
+                                <th>Статус</th>
+                                <th>Последний контакт</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pcs-tbody">
+                            <tr>
+                                <td colspan="5" class="text-center">Загрузка...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentStatus = 'all';
+
+function loadStats() {
+    fetch('/api/stats', {
+        headers: {
+            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('total-pcs').textContent = data.total_pcs;
+        document.getElementById('normal-pcs').textContent = data.normal_pcs;
+        document.getElementById('changed-pcs').textContent = data.changed_pcs;
+        document.getElementById('offline-pcs').textContent = data.offline_pcs;
+    });
+}
+
+function loadPCs(status = 'all') {
+    let url = '/api/pcs?limit=100';
+    if (status !== 'all') {
+        url += '&status=' + status;
+    }
+    
+    fetch(url, {
+        headers: {
+            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        const tbody = document.getElementById('pcs-tbody');
+        tbody.innerHTML = '';
+        
+        if (data.items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">Нет данных</td></tr>';
+            return;
+        }
+        
+        data.items.forEach(pc => {
+            const row = document.createElement('tr');
+            const statusClass = 'status-' + pc.status;
+            const statusIcon = {
+                'normal': '✅',
+                'changed': '⚠️',
+                'offline': '❌',
+                'unknown': '❓'
+            }[pc.status] || '❓';
+            
+            const lastSeen = pc.last_seen ? new Date(pc.last_seen).toLocaleString('ru-RU') : 'Никогда';
+            
+            row.innerHTML = `
+                <td>${pc.pc_id}</td>
+                <td>${pc.hostname}</td>
+                <td><span class="${statusClass}">${statusIcon} ${pc.status}</span></td>
+                <td>${lastSeen}</td>
+                <td>
+                    <a href="/pc/${pc.pc_id}" class="btn btn-sm btn-primary">
+                        <i class="bi bi-eye"></i> Подробнее
+                    </a>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    });
+}
+
+// Фильтры
+document.querySelectorAll('[data-status]').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('[data-status]').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        currentStatus = this.dataset.status;
+        loadPCs(currentStatus);
+    });
+});
+
+// Загрузка данных
+loadStats();
+loadPCs();
+
+// Обновление каждые 30 секунд
+setInterval(() => {
+    loadStats();
+    loadPCs(currentStatus);
+}, 30000);
+</script>
+{% endblock %}
+

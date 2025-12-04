@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}События - PC-Guardian{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-journal-text"></i> Журнал событий</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-4">
+        <input type="text" class="form-control" id="search-input" placeholder="Поиск по PC ID...">
+    </div>
+    <div class="col-md-4">
+        <select class="form-select" id="component-filter">
+            <option value="">Все компоненты</option>
+            <option value="motherboard">Материнская плата</option>
+            <option value="cpu">Процессор</option>
+            <option value="ram">RAM</option>
+            <option value="storage">Накопитель</option>
+            <option value="gpu">Видеокарта</option>
+            <option value="network">Сетевой адаптер</option>
+            <option value="psu">Блок питания</option>
+        </select>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Время</th>
+                                <th>PC ID</th>
+                                <th>Компонент</th>
+                                <th>Тип изменения</th>
+                                <th>Детали</th>
+                            </tr>
+                        </thead>
+                        <tbody id="events-tbody">
+                            <tr>
+                                <td colspan="5" class="text-center">Загрузка...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadEvents(pcId = null, componentType = null) {
+    let url = '/api/events?limit=100';
+    if (pcId) url += '&pc_id=' + pcId;
+    if (componentType) url += '&component_type=' + componentType;
+    
+    fetch(url, {
+        headers: {
+            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        const tbody = document.getElementById('events-tbody');
+        tbody.innerHTML = '';
+        
+        if (data.items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">Нет событий</td></tr>';
+            return;
+        }
+        
+        data.items.forEach(event => {
+            const row = document.createElement('tr');
+            const componentNames = {
+                'motherboard': 'Материнская плата',
+                'cpu': 'Процессор',
+                'ram': 'RAM',
+                'storage': 'Накопитель',
+                'gpu': 'Видеокарта',
+                'network': 'Сетевой адаптер',
+                'psu': 'Блок питания'
+            };
+            
+            const eventTypes = {
+                'removed': '<span class="badge bg-danger">Удален</span>',
+                'added': '<span class="badge bg-success">Добавлен</span>',
+                'replaced': '<span class="badge bg-warning">Заменен</span>'
+            };
+            
+            row.innerHTML = `
+                <td>${new Date(event.timestamp).toLocaleString('ru-RU')}</td>
+                <td><a href="/pc/${event.pc_id}">${event.pc_id}</a></td>
+                <td>${componentNames[event.component_type] || event.component_type}</td>
+                <td>${eventTypes[event.event_type] || event.event_type}</td>
+                <td>${event.details || '-'}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    });
+}
+
+document.getElementById('search-input').addEventListener('input', function() {
+    const pcId = this.value.trim() || null;
+    const componentType = document.getElementById('component-filter').value || null;
+    loadEvents(pcId, componentType);
+});
+
+document.getElementById('component-filter').addEventListener('change', function() {
+    const pcId = document.getElementById('search-input').value.trim() || null;
+    loadEvents(pcId, this.value || null);
+});
+
+loadEvents();
+</script>
+{% endblock %}
+

@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}{{ pc.hostname }} - PC-Guardian{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1>
+            <i class="bi bi-pc-display"></i> {{ pc.hostname }}
+            <small class="text-muted">({{ pc.pc_id }})</small>
+        </h1>
+        <p class="text-muted">
+            Статус: 
+            <span class="status-{{ pc.status }}">
+                {% if pc.status == 'normal' %}✅ В норме
+                {% elif pc.status == 'changed' %}⚠️ Изменения
+                {% elif pc.status == 'offline' %}❌ Нет связи
+                {% else %}❓ Неизвестно{% endif %}
+            </span>
+        </p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Эталонная конфигурация</h5>
+            </div>
+            <div class="card-body" id="baseline-config">
+                <p class="text-muted">Загрузка...</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Текущая конфигурация</h5>
+            </div>
+            <div class="card-body" id="current-config">
+                <p class="text-muted">Загрузка...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">История изменений</h5>
+                {% if user.role == 'admin' %}
+                <button class="btn btn-sm btn-primary" onclick="setBaseline()">
+                    <i class="bi bi-check-circle"></i> Установить текущую как эталонную
+                </button>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Время</th>
+                                <th>Компонент</th>
+                                <th>Тип изменения</th>
+                                <th>Детали</th>
+                            </tr>
+                        </thead>
+                        <tbody id="events-tbody">
+                            <tr>
+                                <td colspan="4" class="text-center">Загрузка...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadPCData() {
+    fetch(`/api/pcs/{{ pc.pc_id }}`, {
+        headers: {
+            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        // Эталонная конфигурация
+        const baseline = data.baseline_config;
+        if (baseline) {
+            document.getElementById('baseline-config').innerHTML = formatConfig(baseline);
+        } else {
+            document.getElementById('baseline-config').innerHTML = '<p class="text-muted">Нет данных</p>';
+        }
+        
+        // Текущая конфигурация
+        const current = data.latest_config;
+        if (current) {
+            document.getElementById('current-config').innerHTML = formatConfig(current);
+        } else {
+            document.getElementById('current-config').innerHTML = '<p class="text-muted">Нет данных</p>';
+        }
+    });
+}
+
+function formatConfig(config) {
+    let html = '<dl class="row">';
+    
+    const components = {
+        'motherboard': 'Материнская плата',
+        'cpu': 'Процессор',
+        'ram_modules': 'Оперативная память',
+        'storage_devices': 'Накопители',
+        'gpu': 'Видеокарта',
+        'network_adapters': 'Сетевые адаптеры',
+        'psu': 'Блок питания'
+    };
+    
+    for (const [key, label] of Object.entries(components)) {
+        const value = config[key];
+        if (value) {
+            html += `<dt class="col-sm-4">${label}:</dt>`;
+            if (Array.isArray(value)) {
+                html += `<dd class="col-sm-8">${value.length} шт.</dd>`;
+            } else if (typeof value === 'object') {
+                html += `<dd class="col-sm-8">${value.model || value.name || 'N/A'}</dd>`;
+            }
+        }
+    }
+    
+    html += '</dl>';
+    return html;
+}
+
+function loadEvents() {
+    fetch(`/api/pcs/{{ pc.pc_id }}/events`, {
+        headers: {
+            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        const tbody = document.getElementById('events-tbody');
+        tbody.innerHTML = '';
+        
+        if (data.items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Нет событий</td></tr>';
+            return;
+        }
+        
+        data.items.forEach(event => {
+            const row = document.createElement('tr');
+            const componentNames = {
+                'motherboard': 'Материнская плата',
+                'cpu': 'Процессор',
+                'ram': 'RAM',
+                'storage': 'Накопитель',
+                'gpu': 'Видеокарта',
+                'network': 'Сетевой адаптер',
+                'psu': 'Блок питания'
+            };
+            
+            const eventTypes = {
+                'removed': '<span class="badge bg-danger">Удален</span>',
+                'added': '<span class="badge bg-success">Добавлен</span>',
+                'replaced': '<span class="badge bg-warning">Заменен</span>'
+            };
+            
+            row.innerHTML = `
+                <td>${new Date(event.timestamp).toLocaleString('ru-RU')}</td>
+                <td>${componentNames[event.component_type] || event.component_type}</td>
+                <td>${eventTypes[event.event_type] || event.event_type}</td>
+                <td>${event.details || '-'}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    });
+}
+
+function setBaseline() {
+    if (!confirm('Установить текущую конфигурацию как эталонную?')) {
+        return;
+    }
+    
+    fetch(`/api/pcs/{{ pc.pc_id }}/baseline`, {
+        method: 'POST',
+        headers: {
+            'Authorization': 'Basic ' + btoa('{{ user.username }}:password')
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert('Эталонная конфигурация обновлена');
+        loadPCData();
+        loadEvents();
+    })
+    .catch(e => {
+        alert('Ошибка: ' + e.message);
+    });
+}
+
+loadPCData();
+loadEvents();
+</script>
+{% endblock %}
+
