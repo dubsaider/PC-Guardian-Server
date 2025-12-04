@@ -8,6 +8,7 @@ from typing import Optional
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
 
+from datetime import datetime
 from common.kafka_config import KafkaConfig
 from common.models import PCConfiguration
 from database import SessionLocal, PC, PCConfiguration as DBPCConfiguration, ChangeEvent, Base, engine
@@ -63,41 +64,41 @@ class PCGuardianConsumer:
             # Проверяем, существует ли ПК
             pc = db.query(PC).filter_by(pc_id=config.pc_id).first()
             
+            last_seen_time = config.timestamp if config.timestamp else datetime.utcnow()
+            
             if not pc:
                 # Регистрируем новый ПК
                 pc = PC(
                     pc_id=config.pc_id,
                     hostname=config.hostname,
-                    status='normal'
+                    status='normal',
+                    last_seen=last_seen_time
                 )
                 db.add(pc)
                 db.flush()
                 
-                # Создаем эталонную конфигурацию
                 baseline = self._create_db_configuration(pc.pc_id, config, is_baseline=True)
                 db.add(baseline)
                 
+                current_config = self._create_db_configuration(pc.pc_id, config, is_baseline=False)
+                db.add(current_config)
+                
                 self.logger.info(f"Зарегистрирован новый ПК: {config.pc_id} ({config.hostname})")
             else:
-                # Обновляем время последнего контакта
-                pc.last_seen = config.timestamp
+                pc.last_seen = last_seen_time
                 
-                # Получаем эталонную конфигурацию
                 baseline = db.query(DBPCConfiguration).filter_by(
                     pc_id=pc.pc_id,
                     is_baseline=True
                 ).first()
                 
                 if baseline:
-                    # Сравниваем с эталонной
                     current_db_config = self._create_db_configuration(pc.pc_id, config, is_baseline=False)
                     events = self.comparator.compare_configurations(baseline, current_db_config)
                     
                     if events:
-                        # Есть изменения
                         pc.status = 'changed'
                         
-                        # Сохраняем события
                         for event in events:
                             db_event = ChangeEvent(
                                 pc_id=pc.pc_id,
@@ -110,23 +111,24 @@ class PCGuardianConsumer:
                             db_event.set_new_value(event.new_value)
                             db.add(db_event)
                             
-                            # Отправляем уведомление
                             self.notification_service.send_alert(pc, event)
                         
                         self.logger.warning(
                             f"Обнаружены изменения на ПК {config.pc_id}: {len(events)} событий"
                         )
                     else:
-                        # Изменений нет
                         pc.status = 'normal'
                     
-                    # Сохраняем текущую конфигурацию
                     db.add(current_db_config)
                 else:
-                    # Нет эталонной конфигурации, создаем её
                     baseline = self._create_db_configuration(pc.pc_id, config, is_baseline=True)
                     db.add(baseline)
+                    
+                    current_config = self._create_db_configuration(pc.pc_id, config, is_baseline=False)
+                    db.add(current_config)
+                    
                     pc.status = 'normal'
+                    pc.last_seen = last_seen_time
                     self.logger.info(f"Создана эталонная конфигурация для ПК: {config.pc_id}")
             
             db.commit()
@@ -142,7 +144,7 @@ class PCGuardianConsumer:
         db_config = DBPCConfiguration(
             pc_id=pc_id,
             is_baseline=is_baseline,
-            timestamp=config.timestamp or config.timestamp
+            timestamp=config.timestamp if config.timestamp else datetime.utcnow()
         )
         
         if config.motherboard:
