@@ -54,6 +54,23 @@ if os.path.exists("static"):
 
 # ==================== API Endpoints ====================
 
+def update_offline_status(db: Session, offline_threshold_minutes: int = 10):
+    """Обновить статус ПК на 'offline' если они не были в сети дольше порога"""
+    threshold = datetime.utcnow() - timedelta(minutes=offline_threshold_minutes)
+    
+    # Находим ПК, которые не были в сети дольше порога
+    offline_pcs = db.query(PC).filter(
+        PC.last_seen.isnot(None),
+        PC.last_seen < threshold,
+        PC.status != 'offline'
+    ).all()
+    
+    for pc in offline_pcs:
+        pc.status = 'offline'
+    
+    if offline_pcs:
+        db.commit()
+
 @app.get("/api/pcs", response_class=JSONResponse)
 async def get_pcs(
     request: Request,
@@ -64,6 +81,9 @@ async def get_pcs(
     current_user: User = Depends(get_current_user)
 ):
     """Получить список ПК"""
+    # Обновляем статус offline перед получением списка
+    update_offline_status(db, offline_threshold_minutes=10)
+    
     query = db.query(PC)
     
     if status:
@@ -86,6 +106,9 @@ async def get_pc(
     current_user: User = Depends(get_current_user)
 ):
     """Получить информацию о ПК"""
+    # Обновляем статус offline перед получением информации
+    update_offline_status(db, offline_threshold_minutes=10)
+    
     pc = db.query(PC).filter(PC.pc_id == pc_id).first()
     if not pc:
         raise HTTPException(status_code=404, detail="PC not found")
@@ -204,11 +227,18 @@ async def get_stats(
     current_user: User = Depends(get_current_user)
 ):
     """Получить статистику"""
+    # Обновляем статус offline перед подсчетом статистики
+    update_offline_status(db, offline_threshold_minutes=10)
+    
     total_pcs = db.query(PC).count()
     normal_pcs = db.query(PC).filter(PC.status == 'normal').count()
     changed_pcs = db.query(PC).filter(PC.status == 'changed').count()
+    
+    # Подсчитываем offline ПК (используем тот же порог - 10 минут)
+    offline_threshold = datetime.utcnow() - timedelta(minutes=10)
     offline_pcs = db.query(PC).filter(
-        PC.last_seen < datetime.utcnow() - timedelta(hours=24)
+        PC.last_seen.isnot(None),
+        PC.last_seen < offline_threshold
     ).count()
     
     recent_events = db.query(ChangeEvent).filter(
