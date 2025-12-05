@@ -26,6 +26,52 @@ def get_db():
         db.close()
 
 
+class Room(Base):
+    """Модель аудитории"""
+    __tablename__ = 'rooms'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Связи
+    pcs = relationship('PC', backref='room', lazy=True)
+    cameras = relationship('Camera', backref='room', lazy=True, cascade='all, delete-orphan')
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class Camera(Base):
+    """Модель камеры"""
+    __tablename__ = 'cameras'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    room_id = Column(Integer, ForeignKey('rooms.id'), nullable=False, index=True)
+    status = Column(String(50), default='inactive')  # active, inactive, error
+    device_id = Column(String(255), nullable=True)  # Идентификатор устройства камеры
+    ip_address = Column(String(50), nullable=True)  # IP-адрес камеры (если есть)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'id': self.id,
+            'name': self.name,
+            'room_id': self.room_id,
+            'status': self.status,
+            'device_id': self.device_id,
+            'ip_address': self.ip_address,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
 class PC(Base):
     """Модель ПК"""
     __tablename__ = 'pcs'
@@ -33,6 +79,7 @@ class PC(Base):
     id = Column(Integer, primary_key=True)
     pc_id = Column(String(255), unique=True, nullable=False, index=True)
     hostname = Column(String(255), nullable=False)
+    room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True, index=True)
     registered_at = Column(DateTime, default=datetime.utcnow)
     last_seen = Column(DateTime, nullable=True)
     status = Column(String(50), default='unknown')  # unknown, normal, changed, offline
@@ -46,6 +93,7 @@ class PC(Base):
             'id': self.id,
             'pc_id': self.pc_id,
             'hostname': self.hostname,
+            'room_id': self.room_id,
             'registered_at': self.registered_at.isoformat() if self.registered_at else None,
             'last_seen': self.last_seen.isoformat() if self.last_seen else None,
             'status': self.status
@@ -116,6 +164,11 @@ class ChangeEvent(Base):
     notified = Column(Boolean, default=False)
     notified_at = Column(DateTime, nullable=True)
     
+    # Видеофиксация (заготовка для будущей реализации)
+    video_recorded = Column(Boolean, default=False)
+    video_path = Column(String(500), nullable=True)  # Путь к записанному видео
+    video_recorded_at = Column(DateTime, nullable=True)  # Время записи видео
+    
     def set_old_value(self, value: Optional[Dict[str, Any]]):
         """Установить старое значение"""
         self.old_value = json.dumps(value, ensure_ascii=False) if value else None
@@ -148,7 +201,10 @@ class ChangeEvent(Base):
             'old_value': self.get_old_value(),
             'new_value': self.get_new_value(),
             'notified': self.notified,
-            'notified_at': self.notified_at.isoformat() if self.notified_at else None
+            'notified_at': self.notified_at.isoformat() if self.notified_at else None,
+            'video_recorded': self.video_recorded,
+            'video_path': self.video_path,
+            'video_recorded_at': self.video_recorded_at.isoformat() if self.video_recorded_at else None
         }
 
 

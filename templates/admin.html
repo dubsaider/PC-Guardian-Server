@@ -1,0 +1,533 @@
+{% extends "base.html" %}
+
+{% block title %}Админ-панель - PC-Guardian{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-gear"></i> Админ-панель</h1>
+    </div>
+</div>
+
+<!-- Вкладки -->
+<ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="rooms-tab" data-bs-toggle="tab" data-bs-target="#rooms" type="button" role="tab">
+            <i class="bi bi-door-open"></i> Аудитории
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="cameras-tab" data-bs-toggle="tab" data-bs-target="#cameras" type="button" role="tab">
+            <i class="bi bi-camera-video"></i> Камеры
+        </button>
+    </li>
+</ul>
+
+<!-- Контент вкладок -->
+<div class="tab-content" id="adminTabsContent">
+    <!-- Вкладка Аудитории -->
+    <div class="tab-pane fade show active" id="rooms" role="tabpanel">
+        <div class="row mb-3">
+            <div class="col-12">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#roomModal" onclick="openRoomModal(null)">
+                    <i class="bi bi-plus-circle"></i> Добавить аудиторию
+                </button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Список аудиторий</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Название</th>
+                                <th>Описание</th>
+                                <th>ПК</th>
+                                <th>Камеры</th>
+                                <th>Дата создания</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rooms-tbody">
+                            <tr>
+                                <td colspan="7" class="text-center">Загрузка...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Вкладка Камеры -->
+    <div class="tab-pane fade" id="cameras" role="tabpanel">
+        <div class="row mb-3">
+            <div class="col-12">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#cameraModal" onclick="openCameraModal(null)">
+                    <i class="bi bi-plus-circle"></i> Добавить камеру
+                </button>
+                <select id="camera-room-filter" class="form-select d-inline-block w-auto ms-2" onchange="loadCameras()">
+                    <option value="">Все аудитории</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Список камер</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Название</th>
+                                <th>Аудитория</th>
+                                <th>Статус</th>
+                                <th>Device ID</th>
+                                <th>IP-адрес</th>
+                                <th>Дата создания</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cameras-tbody">
+                            <tr>
+                                <td colspan="8" class="text-center">Загрузка...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для аудитории -->
+<div class="modal fade" id="roomModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="roomModalTitle">Добавить аудиторию</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="roomForm">
+                    <input type="hidden" id="room-id">
+                    <div class="mb-3">
+                        <label for="room-name" class="form-label">Название <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="room-name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="room-description" class="form-label">Описание</label>
+                        <textarea class="form-control" id="room-description" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveRoom()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для камеры -->
+<div class="modal fade" id="cameraModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="cameraModalTitle">Добавить камеру</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="cameraForm">
+                    <input type="hidden" id="camera-id">
+                    <div class="mb-3">
+                        <label for="camera-name" class="form-label">Название <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="camera-name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="camera-room-id" class="form-label">Аудитория <span class="text-danger">*</span></label>
+                        <select class="form-select" id="camera-room-id" required>
+                            <option value="">Выберите аудиторию</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="camera-status" class="form-label">Статус</label>
+                        <select class="form-select" id="camera-status">
+                            <option value="inactive">Неактивна</option>
+                            <option value="active">Активна</option>
+                            <option value="error">Ошибка</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="camera-device-id" class="form-label">Device ID</label>
+                        <input type="text" class="form-control" id="camera-device-id">
+                    </div>
+                    <div class="mb-3">
+                        <label for="camera-ip-address" class="form-label">IP-адрес</label>
+                        <input type="text" class="form-control" id="camera-ip-address" placeholder="192.168.1.100">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveCamera()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let rooms = [];
+let cameras = [];
+
+// Загрузка аудиторий
+async function loadRooms() {
+    try {
+        const response = await fetch('/api/admin/rooms', { credentials: 'include' });
+        if (response.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        if (response.status === 403) {
+            alert('Недостаточно прав для доступа к админ-панели');
+            window.location.href = '/';
+            return;
+        }
+        const data = await response.json();
+        rooms = data.items;
+        
+        const tbody = document.getElementById('rooms-tbody');
+        tbody.innerHTML = '';
+        
+        if (rooms.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Нет данных</td></tr>';
+        } else {
+            rooms.forEach(room => {
+                const row = document.createElement('tr');
+                const created = room.created_at ? new Date(room.created_at).toLocaleDateString('ru-RU') : '-';
+                row.innerHTML = `
+                    <td>${room.id}</td>
+                    <td>${room.name}</td>
+                    <td>${room.description || '-'}</td>
+                    <td><span class="badge bg-info">${room.pcs ? room.pcs.length : 0}</span></td>
+                    <td><span class="badge bg-secondary">${room.cameras ? room.cameras.length : 0}</span></td>
+                    <td>${created}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary me-1" onclick="openRoomModal(${room.id})">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteRoom(${room.id})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+        
+        // Обновляем селекты аудиторий
+        updateRoomSelects();
+    } catch (error) {
+        console.error('Ошибка загрузки аудиторий:', error);
+    }
+}
+
+// Загрузка камер
+async function loadCameras() {
+    try {
+        const roomFilter = document.getElementById('camera-room-filter').value;
+        let url = '/api/admin/cameras';
+        if (roomFilter) {
+            url += `?room_id=${roomFilter}`;
+        }
+        
+        const response = await fetch(url, { credentials: 'include' });
+        if (response.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        if (response.status === 403) {
+            alert('Недостаточно прав для доступа к админ-панели');
+            window.location.href = '/';
+            return;
+        }
+        const data = await response.json();
+        cameras = data.items;
+        
+        const tbody = document.getElementById('cameras-tbody');
+        tbody.innerHTML = '';
+        
+        if (cameras.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center">Нет данных</td></tr>';
+        } else {
+            cameras.forEach(async (camera) => {
+                const row = document.createElement('tr');
+                
+                // Получаем название аудитории
+                const room = rooms.find(r => r.id === camera.room_id);
+                const roomName = room ? room.name : `ID: ${camera.room_id}`;
+                
+                const statusBadge = {
+                    'active': '<span class="badge bg-success">Активна</span>',
+                    'inactive': '<span class="badge bg-secondary">Неактивна</span>',
+                    'error': '<span class="badge bg-danger">Ошибка</span>'
+                }[camera.status] || '<span class="badge bg-secondary">' + camera.status + '</span>';
+                
+                const created = camera.created_at ? new Date(camera.created_at).toLocaleDateString('ru-RU') : '-';
+                
+                row.innerHTML = `
+                    <td>${camera.id}</td>
+                    <td>${camera.name}</td>
+                    <td>${roomName}</td>
+                    <td>${statusBadge}</td>
+                    <td>${camera.device_id || '-'}</td>
+                    <td>${camera.ip_address || '-'}</td>
+                    <td>${created}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary me-1" onclick="openCameraModal(${camera.id})">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteCamera(${camera.id})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки камер:', error);
+    }
+}
+
+// Обновление селектов аудиторий
+function updateRoomSelects() {
+    const cameraRoomId = document.getElementById('camera-room-id');
+    const cameraRoomFilter = document.getElementById('camera-room-filter');
+    
+    // Обновляем селект в модальном окне камеры
+    cameraRoomId.innerHTML = '<option value="">Выберите аудиторию</option>';
+    rooms.forEach(room => {
+        cameraRoomId.innerHTML += `<option value="${room.id}">${room.name}</option>`;
+    });
+    
+    // Обновляем фильтр камер
+    cameraRoomFilter.innerHTML = '<option value="">Все аудитории</option>';
+    rooms.forEach(room => {
+        cameraRoomFilter.innerHTML += `<option value="${room.id}">${room.name}</option>`;
+    });
+}
+
+// Открыть модальное окно аудитории
+function openRoomModal(roomId) {
+    const modal = new bootstrap.Modal(document.getElementById('roomModal'));
+    const title = document.getElementById('roomModalTitle');
+    const form = document.getElementById('roomForm');
+    
+    form.reset();
+    document.getElementById('room-id').value = '';
+    
+    if (roomId) {
+        const room = rooms.find(r => r.id === roomId);
+        if (room) {
+            title.textContent = 'Редактировать аудиторию';
+            document.getElementById('room-id').value = room.id;
+            document.getElementById('room-name').value = room.name;
+            document.getElementById('room-description').value = room.description || '';
+        }
+    } else {
+        title.textContent = 'Добавить аудиторию';
+    }
+    
+    modal.show();
+}
+
+// Сохранить аудиторию
+async function saveRoom() {
+    const roomId = document.getElementById('room-id').value;
+    const name = document.getElementById('room-name').value.trim();
+    const description = document.getElementById('room-description').value.trim();
+    
+    if (!name) {
+        alert('Введите название аудитории');
+        return;
+    }
+    
+    try {
+        const url = roomId ? `/api/admin/rooms/${roomId}` : '/api/admin/rooms';
+        const method = roomId ? 'PUT' : 'POST';
+        const body = roomId 
+            ? { name: name, description: description || null }
+            : { name: name, description: description || null };
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Ошибка сохранения');
+        }
+        
+        bootstrap.Modal.getInstance(document.getElementById('roomModal')).hide();
+        loadRooms();
+        if (!roomId) {
+            loadCameras(); // Обновляем список камер для обновления селектов
+        }
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+// Удалить аудиторию
+async function deleteRoom(roomId) {
+    if (!confirm('Вы уверены, что хотите удалить эту аудиторию?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/admin/rooms/${roomId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Ошибка удаления');
+        }
+        
+        loadRooms();
+        loadCameras();
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+// Открыть модальное окно камеры
+function openCameraModal(cameraId) {
+    const modal = new bootstrap.Modal(document.getElementById('cameraModal'));
+    const title = document.getElementById('cameraModalTitle');
+    const form = document.getElementById('cameraForm');
+    
+    form.reset();
+    document.getElementById('camera-id').value = '';
+    
+    if (cameraId) {
+        const camera = cameras.find(c => c.id === cameraId);
+        if (camera) {
+            title.textContent = 'Редактировать камеру';
+            document.getElementById('camera-id').value = camera.id;
+            document.getElementById('camera-name').value = camera.name;
+            document.getElementById('camera-room-id').value = camera.room_id;
+            document.getElementById('camera-status').value = camera.status;
+            document.getElementById('camera-device-id').value = camera.device_id || '';
+            document.getElementById('camera-ip-address').value = camera.ip_address || '';
+        }
+    } else {
+        title.textContent = 'Добавить камеру';
+    }
+    
+    modal.show();
+}
+
+// Сохранить камеру
+async function saveCamera() {
+    const cameraId = document.getElementById('camera-id').value;
+    const name = document.getElementById('camera-name').value.trim();
+    const roomId = document.getElementById('camera-room-id').value;
+    const status = document.getElementById('camera-status').value;
+    const deviceId = document.getElementById('camera-device-id').value.trim();
+    const ipAddress = document.getElementById('camera-ip-address').value.trim();
+    
+    if (!name || !roomId) {
+        alert('Заполните обязательные поля');
+        return;
+    }
+    
+    try {
+        const url = cameraId ? `/api/admin/cameras/${cameraId}` : '/api/admin/cameras';
+        const method = cameraId ? 'PUT' : 'POST';
+        const body = cameraId
+            ? {
+                name: name,
+                room_id: parseInt(roomId),
+                status: status,
+                device_id: deviceId || null,
+                ip_address: ipAddress || null
+            }
+            : {
+                name: name,
+                room_id: parseInt(roomId),
+                status: status,
+                device_id: deviceId || null,
+                ip_address: ipAddress || null
+            };
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Ошибка сохранения');
+        }
+        
+        bootstrap.Modal.getInstance(document.getElementById('cameraModal')).hide();
+        loadCameras();
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+// Удалить камеру
+async function deleteCamera(cameraId) {
+    if (!confirm('Вы уверены, что хотите удалить эту камеру?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/admin/cameras/${cameraId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Ошибка удаления');
+        }
+        
+        loadCameras();
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+// Инициализация
+document.addEventListener('DOMContentLoaded', function() {
+    loadRooms();
+    loadCameras();
+    
+    // Переключение вкладок
+    document.getElementById('cameras-tab').addEventListener('shown.bs.tab', function() {
+        loadCameras();
+    });
+});
+</script>
+{% endblock %}
+

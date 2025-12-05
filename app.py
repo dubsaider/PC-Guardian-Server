@@ -11,10 +11,11 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, timedelta
 
-from database import get_db, Base, engine, PC, PCConfiguration, ChangeEvent, User
+from database import get_db, Base, engine, PC, PCConfiguration, ChangeEvent, User, Room, Camera
 from kafka_consumer import PCGuardianConsumer
 from common.kafka_config import KafkaConfig
 from auth import get_current_user, verify_password, create_access_token
+from pydantic import BaseModel as PydanticBaseModel
 
 # Создаем таблицы БД
 Base.metadata.create_all(bind=engine)
@@ -53,6 +54,12 @@ if os.path.exists("static"):
 
 
 # ==================== API Endpoints ====================
+
+def require_admin(current_user: User = Depends(get_current_user)):
+    """Вспомогательная функция для проверки прав администратора"""
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 def update_offline_status(db: Session, offline_threshold_minutes: int = 10):
     """Обновить статус ПК на 'offline' если они не были в сети дольше порога"""
@@ -254,6 +261,262 @@ async def get_stats(
     }
 
 
+# ==================== Admin API Endpoints (Rooms) ====================
+
+class RoomCreate(PydanticBaseModel):
+    name: str
+    description: Optional[str] = None
+
+class RoomUpdate(PydanticBaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+@app.get("/api/admin/rooms", response_class=JSONResponse)
+async def get_rooms(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Получить список всех аудиторий"""
+    rooms = db.query(Room).all()
+    return {
+        "total": len(rooms),
+        "items": [room.to_dict() for room in rooms]
+    }
+
+@app.get("/api/admin/rooms/{room_id}", response_class=JSONResponse)
+async def get_room(
+    room_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Получить информацию об аудитории"""
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    # Получаем связанные ПК и камеры
+    result = room.to_dict()
+    result['pcs'] = [pc.to_dict() for pc in room.pcs]
+    result['cameras'] = [camera.to_dict() for camera in room.cameras]
+    
+    return result
+
+@app.post("/api/admin/rooms", response_class=JSONResponse)
+async def create_room(
+    room_data: RoomCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Создать новую аудиторию"""
+    # Проверяем, не существует ли уже аудитория с таким именем
+    existing = db.query(Room).filter(Room.name == room_data.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Room with this name already exists")
+    
+    room = Room(
+        name=room_data.name,
+        description=room_data.description
+    )
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+    
+    return {"message": "Room created", "room": room.to_dict()}
+
+@app.put("/api/admin/rooms/{room_id}", response_class=JSONResponse)
+async def update_room(
+    room_id: int,
+    room_data: RoomUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Обновить информацию об аудитории"""
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    if room_data.name is not None:
+        # Проверяем, не занято ли имя другой аудиторией
+        existing = db.query(Room).filter(Room.name == room_data.name, Room.id != room_id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Room with this name already exists")
+        room.name = room_data.name
+    
+    if room_data.description is not None:
+        room.description = room_data.description
+    
+    db.commit()
+    db.refresh(room)
+    
+    return {"message": "Room updated", "room": room.to_dict()}
+
+@app.delete("/api/admin/rooms/{room_id}", response_class=JSONResponse)
+async def delete_room(
+    room_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Удалить аудиторию"""
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    # Проверяем, есть ли связанные ПК или камеры
+    if room.pcs:
+        raise HTTPException(status_code=400, detail="Cannot delete room with associated PCs")
+    if room.cameras:
+        raise HTTPException(status_code=400, detail="Cannot delete room with associated cameras")
+    
+    db.delete(room)
+    db.commit()
+    
+    return {"message": "Room deleted"}
+
+
+# ==================== Admin API Endpoints (Cameras) ====================
+
+class CameraCreate(PydanticBaseModel):
+    name: str
+    room_id: int
+    status: Optional[str] = "inactive"
+    device_id: Optional[str] = None
+    ip_address: Optional[str] = None
+
+class CameraUpdate(PydanticBaseModel):
+    name: Optional[str] = None
+    room_id: Optional[int] = None
+    status: Optional[str] = None
+    device_id: Optional[str] = None
+    ip_address: Optional[str] = None
+
+@app.get("/api/admin/cameras", response_class=JSONResponse)
+async def get_cameras(
+    request: Request,
+    room_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Получить список всех камер"""
+    query = db.query(Camera)
+    
+    if room_id:
+        query = query.filter(Camera.room_id == room_id)
+    
+    cameras = query.all()
+    return {
+        "total": len(cameras),
+        "items": [camera.to_dict() for camera in cameras]
+    }
+
+@app.get("/api/admin/cameras/{camera_id}", response_class=JSONResponse)
+async def get_camera(
+    camera_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Получить информацию о камере"""
+    camera = db.query(Camera).filter(Camera.id == camera_id).first()
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    result = camera.to_dict()
+    result['room'] = camera.room.to_dict() if camera.room else None
+    
+    return result
+
+@app.post("/api/admin/cameras", response_class=JSONResponse)
+async def create_camera(
+    camera_data: CameraCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Создать новую камеру"""
+    # Проверяем, существует ли аудитория
+    room = db.query(Room).filter(Room.id == camera_data.room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    # Проверяем статус
+    if camera_data.status not in ['active', 'inactive', 'error']:
+        raise HTTPException(status_code=400, detail="Invalid status. Must be: active, inactive, or error")
+    
+    camera = Camera(
+        name=camera_data.name,
+        room_id=camera_data.room_id,
+        status=camera_data.status or 'inactive',
+        device_id=camera_data.device_id,
+        ip_address=camera_data.ip_address
+    )
+    db.add(camera)
+    db.commit()
+    db.refresh(camera)
+    
+    return {"message": "Camera created", "camera": camera.to_dict()}
+
+@app.put("/api/admin/cameras/{camera_id}", response_class=JSONResponse)
+async def update_camera(
+    camera_id: int,
+    camera_data: CameraUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Обновить информацию о камере"""
+    camera = db.query(Camera).filter(Camera.id == camera_id).first()
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    if camera_data.name is not None:
+        camera.name = camera_data.name
+    
+    if camera_data.room_id is not None:
+        # Проверяем, существует ли аудитория
+        room = db.query(Room).filter(Room.id == camera_data.room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        camera.room_id = camera_data.room_id
+    
+    if camera_data.status is not None:
+        if camera_data.status not in ['active', 'inactive', 'error']:
+            raise HTTPException(status_code=400, detail="Invalid status. Must be: active, inactive, or error")
+        camera.status = camera_data.status
+    
+    if camera_data.device_id is not None:
+        camera.device_id = camera_data.device_id
+    
+    if camera_data.ip_address is not None:
+        camera.ip_address = camera_data.ip_address
+    
+    db.commit()
+    db.refresh(camera)
+    
+    return {"message": "Camera updated", "camera": camera.to_dict()}
+
+@app.delete("/api/admin/cameras/{camera_id}", response_class=JSONResponse)
+async def delete_camera(
+    camera_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Удалить камеру"""
+    camera = db.query(Camera).filter(Camera.id == camera_id).first()
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    db.delete(camera)
+    db.commit()
+    
+    return {"message": "Camera deleted"}
+
+
 # ==================== Web Interface ====================
 
 @app.get("/", response_class=HTMLResponse)
@@ -287,6 +550,16 @@ async def events_page(
     """Страница журнала событий"""
     template = templates.get_template("events.html")
     return HTMLResponse(template.render(request=request, user=current_user))
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_panel(
+    request: Request,
+    admin_user: User = Depends(require_admin)
+):
+    """Страница админ-панели"""
+    template = templates.get_template("admin.html")
+    return HTMLResponse(template.render(request=request, user=admin_user))
 
 
 @app.get("/login", response_class=HTMLResponse)

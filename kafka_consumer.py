@@ -68,11 +68,15 @@ class PCGuardianConsumer:
             
             if not pc:
                 # Регистрируем новый ПК
+                # TODO: Привязку к аудитории можно будет извлекать из доменного имени устройства (hostname).
+                #       Иногда доменное имя формируют с привязкой к аудитории, но формат доменного имени уточнить.
+                #       Здесь можно будет добавить логику парсинга hostname и автоматического определения room_id.
                 pc = PC(
                     pc_id=config.pc_id,
                     hostname=config.hostname,
                     status='normal',
                     last_seen=last_seen_time
+                    # room_id можно будет определить автоматически из hostname
                 )
                 db.add(pc)
                 db.flush()
@@ -86,6 +90,10 @@ class PCGuardianConsumer:
                 self.logger.info(f"Зарегистрирован новый ПК: {config.pc_id} ({config.hostname})")
             else:
                 pc.last_seen = last_seen_time
+                
+                # TODO: При обновлении ПК можно проверять, изменился ли hostname, и если изменился
+                #       или room_id не установлен, попытаться извлечь room_id из доменного имени.
+                #       Это поможет автоматически привязывать ПК к аудиториям на основе доменного имени.
                 
                 baseline = db.query(DBPCConfiguration).filter_by(
                     pc_id=pc.pc_id,
@@ -112,6 +120,9 @@ class PCGuardianConsumer:
                             db.add(db_event)
                             
                             self.notification_service.send_alert(pc, event)
+                            
+                            # TODO: При обнаружении изменений конфигурации ПК, если в аудитории установлены камеры,
+                            #       здесь можно будет добавить логику для инициации видеофиксации
                         
                         self.logger.warning(
                             f"Обнаружены изменения на ПК {config.pc_id}: {len(events)} событий"
