@@ -154,6 +154,24 @@ class PCConfiguration(Base):
             result[component] = self.get_component(component)
         
         return result
+    
+    @classmethod
+    def from_current_configuration(cls, current: 'PCCurrentConfiguration') -> 'PCConfiguration':
+        """Создать конфигурацию истории из текущего состояния (для сравнения)"""
+        config = cls(
+            pc_id=current.pc_id,
+            is_baseline=False,
+            timestamp=current.updated_at,
+            agent_version=current.agent_version
+        )
+        
+        # Копируем все компоненты
+        for component in ['motherboard', 'cpu', 'ram_modules', 'storage_devices', 'gpu', 'network_adapters', 'psu', 'peripherals', 'system_info']:
+            component_data = current.get_component(component)
+            if component_data:
+                config.set_component(component, component_data)
+        
+        return config
 
 
 class ChangeEvent(Base):

@@ -102,27 +102,30 @@ class ConfigurationProcessingService:
                 pc_service.update_status(pc, 'normal')
                 self.logger.info(f"Создана эталонная конфигурация для ПК: {config.pc_id}")
             else:
-                # Есть эталонная - сравниваем с текущей
+                # Есть эталонная - сравниваем с текущим состоянием
                 pc_service.update_last_seen(pc, last_seen_time)
                 
-                # Создаем текущую конфигурацию
-                current_db = self.config_service.create_db_configuration(
+                # Получаем текущее состояние (если есть)
+                current_state = current_config_repo.find_by_pc_id(pc.pc_id)
+                
+                # Создаем объект новой конфигурации для сравнения
+                new_config_db = self.config_service.create_db_configuration(
                     pc.pc_id, config, is_baseline=False
                 )
                 
-                # Логирование созданной конфигурации перед сохранением
-                self.logger.info(
-                    f"Created current config for {pc.pc_id}: "
-                    f"agent_version={current_db.agent_version}, "
-                    f"has_network_adapters={bool(current_db.network_adapters)}, "
-                    f"timestamp={current_db.timestamp}"
-                )
-                
-                # Сравниваем конфигурации (получаем domain события)
-                domain_events = self.comparison_service.compare_configurations(baseline, current_db)
+                # Сравниваем с текущим состоянием (если есть), иначе с эталонной
+                if current_state:
+                    # Преобразуем PCCurrentConfiguration в DBPCConfiguration для сравнения
+                    from infrastructure.database.models import PCConfiguration as DBPCConfiguration
+                    current_state_db = DBPCConfiguration.from_current_configuration(current_state)
+                    # Сравниваем новую конфигурацию с текущим состоянием
+                    domain_events = self.comparison_service.compare_configurations(current_state_db, new_config_db)
+                else:
+                    # Нет текущего состояния - сравниваем с эталонной
+                    domain_events = self.comparison_service.compare_configurations(baseline, new_config_db)
                 
                 if domain_events:
-                    # Есть изменения
+                    # Есть изменения - сохраняем их
                     pc_service.update_status(pc, 'changed')
                     
                     # Создаем события БД
@@ -140,10 +143,8 @@ class ConfigurationProcessingService:
                     # Нет изменений
                     pc_service.update_status(pc, 'normal')
                 
-                # Сохраняем текущую конфигурацию в историю
-                config_repo.create(current_db)
-                
-                # Обновляем текущее состояние
+                # НЕ сохраняем конфигурацию в историю - храним только эталонную
+                # Обновляем только текущее состояние
                 current_config = self.config_service.create_current_configuration(
                     pc.pc_id, config
                 )

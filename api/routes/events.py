@@ -55,18 +55,24 @@ async def get_events(
         except:
             pass
     
+    # Нормализуем все поисковые поля (приводим к нижнему регистру для регистронезависимого поиска)
+    normalized_building = building.lower().strip() if building else None
+    normalized_floor = floor.lower().strip() if floor else None
+    normalized_location = location.lower().strip() if location else None
+    normalized_search = search.lower().strip() if search else None
+    
     events = event_repo.find_all(
         skip=skip,
         limit=limit,
         pc_id=pc_id,
         component_type=component_type,
         event_type=event_type,
-        building=building,
-        floor=floor,
-        location=location,
+        building=normalized_building,
+        floor=normalized_floor,
+        location=normalized_location,
         date_from=date_from_dt,
         date_to=date_to_dt,
-        search=search,
+        search=normalized_search,
         sort_by=sort_by,
         sort_order=sort_order
     )
@@ -74,12 +80,12 @@ async def get_events(
         pc_id=pc_id,
         component_type=component_type,
         event_type=event_type,
-        building=building,
-        floor=floor,
-        location=location,
+        building=normalized_building,
+        floor=normalized_floor,
+        location=normalized_location,
         date_from=date_from_dt,
         date_to=date_to_dt,
-        search=search
+        search=normalized_search
     )
     
     return EventListResponse(

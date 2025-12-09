@@ -70,8 +70,8 @@
                 <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Граф изменений</h5>
             </div>
             <div class="card-body">
-                <div id="history-graph" style="min-height: 400px;">
-                    <p class="text-muted text-center">Загрузка графа...</p>
+                <div id="history-graph-container" style="height: 600px; border: 1px solid #dee2e6; border-radius: 0.25rem;">
+                    <p id="history-graph-loading" class="text-muted text-center" style="padding-top: 300px;">Загрузка графа...</p>
                 </div>
             </div>
         </div>
@@ -138,7 +138,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 <script>
 const pcId = '{{ pc.pc_id }}';
 let currentPage = 1;
@@ -148,6 +148,184 @@ let currentFilters = {
     dateFrom: '',
     dateTo: ''
 };
+
+// Граф изменений
+let network = null;
+
+// Загрузка данных для графа
+function loadGraphData() {
+    const loadingText = document.getElementById('history-graph-loading');
+    const container = document.getElementById('history-graph-container');
+    
+    if (!container) {
+        console.error('Контейнер графа не найден');
+        return;
+    }
+    
+    // Проверяем, что vis-network загружен
+    if (typeof vis === 'undefined') {
+        console.error('vis-network не загружен');
+        if (loadingText) {
+            loadingText.textContent = 'Ошибка: vis-network не загружен';
+        }
+        return;
+    }
+    
+    fetch(`/api/pcs/${pcId}/history/graph`, {
+        credentials: 'include'
+    })
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return null;
+        }
+        if (!r.ok) {
+            throw new Error(`HTTP error! status: ${r.status}`);
+        }
+        return r.json();
+    })
+    .then(data => {
+        if (!data) return;
+        
+        // Скрываем текст загрузки
+        if (loadingText) {
+            loadingText.style.display = 'none';
+        }
+        
+        renderGraph(data.nodes || [], data.edges || []);
+    })
+    .catch(e => {
+        console.error('Ошибка загрузки данных для графа:', e);
+        if (loadingText) {
+            loadingText.textContent = 'Ошибка загрузки графа: ' + e.message;
+        }
+    });
+}
+
+// Отображение графа
+function renderGraph(nodes, edges) {
+    const container = document.getElementById('history-graph-container');
+    if (!container) return;
+    
+    // Если нет данных
+    if (!nodes || nodes.length === 0) {
+        const loadingText = document.getElementById('history-graph-loading');
+        if (loadingText) {
+            loadingText.textContent = 'Нет данных для отображения';
+            loadingText.style.display = 'block';
+        }
+        return;
+    }
+    
+    // Скрываем текст загрузки
+    const loadingText = document.getElementById('history-graph-loading');
+    if (loadingText) {
+        loadingText.style.display = 'none';
+    }
+    
+    // Создаём данные для vis-network
+    const nodes_data = new vis.DataSet(nodes);
+    const edges_data = new vis.DataSet(edges);
+    
+    const data = {
+        nodes: nodes_data,
+        edges: edges_data
+    };
+    
+    // Настройки графа
+    const options = {
+        nodes: {
+            font: {
+                size: 12,
+                color: '#333'
+            },
+            borderWidth: 2,
+            shadow: true
+        },
+        edges: {
+            font: {
+                size: 10,
+                align: 'middle'
+            },
+            smooth: {
+                type: 'continuous',
+                roundness: 0.5
+            },
+            shadow: true
+        },
+        physics: {
+            enabled: true,
+            stabilization: {
+                enabled: true,
+                iterations: 200
+            },
+            hierarchicalRepulsion: {
+                centralGravity: 0.0,
+                springLength: 200,
+                springConstant: 0.01,
+                nodeDistance: 120,
+                damping: 0.09
+            }
+        },
+        layout: {
+            improvedLayout: true,
+            hierarchical: {
+                enabled: true,
+                direction: 'LR', // Слева направо (от старых к новым)
+                sortMethod: 'directed',
+                levelSeparation: 150,
+                nodeSpacing: 200,
+                treeSpacing: 200,
+                blockShifting: true,
+                edgeMinimization: true,
+                parentCentralization: true
+            }
+        },
+        interaction: {
+            hover: true,
+            tooltipDelay: 100,
+            zoomView: true,
+            dragView: true
+        }
+    };
+    
+    // Уничтожаем предыдущий граф, если он существует
+    if (network) {
+        network.destroy();
+        network = null;
+    }
+    
+    // Создаём граф
+    try {
+        network = new vis.Network(container, data, options);
+        
+        // Обработчики событий
+        network.on("click", function (params) {
+            if (params.nodes.length > 0) {
+                const nodeId = params.nodes[0];
+                const node = nodes.find(n => n.id === nodeId);
+                if (node && node.config_id) {
+                    viewConfig(node.config_id);
+                }
+            }
+        });
+        
+        network.on("hoverNode", function (params) {
+            container.style.cursor = 'pointer';
+        });
+        
+        network.on("blurNode", function (params) {
+            container.style.cursor = 'default';
+        });
+        
+    } catch (error) {
+        console.error('Ошибка создания графа:', error);
+        if (loadingText) {
+            loadingText.textContent = 'Ошибка отображения графа: ' + error.message;
+            loadingText.style.display = 'block';
+        }
+    }
+}
 
 // Загрузка истории
 function loadHistory(page = 1) {
@@ -167,10 +345,10 @@ function loadHistory(page = 1) {
     .then(data => {
         if (!data) return;
         
-        document.getElementById('total-count').textContent = data.total;
-        renderHistoryTable(data.items);
-        renderPagination(data.total);
-        renderGraph(data.items);
+        document.getElementById('total-count').textContent = data.total || 0;
+        renderHistoryTable(data.items || []);
+        renderPagination(data.total || 0);
+        // Граф загружается отдельно со всеми данными
     })
     .catch(e => {
         console.error('Ошибка загрузки истории:', e);
@@ -220,11 +398,6 @@ function renderHistoryTable(configs) {
                 <button class="btn btn-sm btn-outline-primary" onclick="viewConfig(${config.id})">
                     <i class="bi bi-eye"></i> Просмотр
                 </button>
-                ${isBaseline ? '' : `
-                    <button class="btn btn-sm btn-outline-success" onclick="compareWithBaseline(${config.id})">
-                        <i class="bi bi-arrow-left-right"></i> Сравнить
-                    </button>
-                `}
             </td>
         `;
         tbody.appendChild(row);
@@ -289,96 +462,6 @@ function renderPagination(total) {
     pagination.appendChild(nextLi);
 }
 
-// Граф изменений
-let historyChart = null;
-function renderGraph(configs) {
-    const ctx = document.getElementById('history-graph');
-    if (!ctx) return;
-    
-    // Подготавливаем данные для графа
-    const dates = configs.map(c => new Date(c.timestamp));
-    const components = ['motherboard', 'cpu', 'ram_modules', 'storage_devices', 'gpu', 'network_adapters', 'psu', 'peripherals'];
-    const datasets = components.map(component => {
-        const data = configs.map((config, index) => {
-            const hasComponent = config[component] && 
-                (Array.isArray(config[component]) ? config[component].length > 0 : true);
-            return hasComponent ? 1 : 0;
-        });
-        return {
-            label: getComponentName(component),
-            data: data,
-            borderColor: getComponentColor(component),
-            backgroundColor: getComponentColor(component) + '40',
-            tension: 0.1,
-            fill: false
-        };
-    });
-    
-    if (historyChart) {
-        historyChart.destroy();
-    }
-    
-    historyChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: dates.map(d => d.toLocaleDateString('ru-RU')),
-            datasets: datasets
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'top',
-                },
-                title: {
-                    display: true,
-                    text: 'История изменений компонентов'
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 1,
-                    ticks: {
-                        stepSize: 1,
-                        callback: function(value) {
-                            return value === 1 ? 'Есть' : 'Нет';
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-function getComponentName(component) {
-    const names = {
-        'motherboard': 'Материнская плата',
-        'cpu': 'Процессор',
-        'ram_modules': 'RAM',
-        'storage_devices': 'Накопители',
-        'gpu': 'Видеокарта',
-        'network_adapters': 'Сеть',
-        'psu': 'БП',
-        'peripherals': 'Периферия'
-    };
-    return names[component] || component;
-}
-
-function getComponentColor(component) {
-    const colors = {
-        'motherboard': 'rgb(255, 99, 132)',
-        'cpu': 'rgb(54, 162, 235)',
-        'ram_modules': 'rgb(255, 205, 86)',
-        'storage_devices': 'rgb(75, 192, 192)',
-        'gpu': 'rgb(153, 102, 255)',
-        'network_adapters': 'rgb(255, 159, 64)',
-        'psu': 'rgb(201, 203, 207)',
-        'peripherals': 'rgb(255, 99, 255)'
-    };
-    return colors[component] || 'rgb(0, 0, 0)';
-}
 
 // Просмотр конфигурации
 function viewConfig(configId) {
@@ -445,6 +528,7 @@ function exportHistory() {
 
 // Загрузка при инициализации
 loadHistory(1);
+loadGraphData(); // Загружаем данные для графика отдельно
 </script>
 {% endblock %}
 

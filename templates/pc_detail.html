@@ -166,7 +166,7 @@ function loadPCData() {
         if (!data) return;
         
         // Версия агента
-        const agentVersion = data.latest_config?.agent_version || data.baseline_config?.agent_version;
+        const agentVersion = data.current_config?.agent_version || data.baseline_config?.agent_version;
         if (agentVersion) {
             document.getElementById('agent-version').textContent = `Версия агента: ${agentVersion}`;
         }
@@ -178,7 +178,7 @@ function loadPCData() {
         
         // Сохраняем конфигурации для сравнения
         baselineConfig = data.baseline_config;
-        currentConfig = data.latest_config;
+        currentConfig = data.current_config;
         
         // Эталонная конфигурация (с подсветкой удаленных/измененных элементов)
         if (baselineConfig) {

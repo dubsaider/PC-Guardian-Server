@@ -57,17 +57,20 @@ class EventRepository:
         if event_type:
             query = query.filter(ChangeEvent.event_type == event_type)
         if building:
-            query = query.filter(PC.building == building)
+            # Регистронезависимый поиск по корпусу (building уже нормализован на уровне API)
+            query = query.filter(PC.building.ilike(f"%{building}%"))
         if floor:
-            query = query.filter(PC.floor == floor)
+            # Регистронезависимый поиск по этажу (floor уже нормализован на уровне API)
+            query = query.filter(PC.floor.ilike(f"%{floor}%"))
         if location:
-            query = query.filter(PC.location == location)
+            # Регистронезависимый поиск по локации (location уже нормализован на уровне API)
+            query = query.filter(PC.location.ilike(f"%{location}%"))
         if date_from:
             query = query.filter(ChangeEvent.timestamp >= date_from)
         if date_to:
             query = query.filter(ChangeEvent.timestamp <= date_to)
         if search:
-            # Поиск по hostname или pc_id
+            # Поиск по hostname или pc_id (search уже нормализован на уровне API)
             search_filter = f"%{search}%"
             query = query.filter(
                 or_(
@@ -113,17 +116,20 @@ class EventRepository:
         if event_type:
             query = query.filter(ChangeEvent.event_type == event_type)
         if building:
-            query = query.filter(PC.building == building)
+            # Регистронезависимый поиск по корпусу (building уже нормализован на уровне API)
+            query = query.filter(PC.building.ilike(f"%{building}%"))
         if floor:
-            query = query.filter(PC.floor == floor)
+            # Регистронезависимый поиск по этажу (floor уже нормализован на уровне API)
+            query = query.filter(PC.floor.ilike(f"%{floor}%"))
         if location:
-            query = query.filter(PC.location == location)
+            # Регистронезависимый поиск по локации (location уже нормализован на уровне API)
+            query = query.filter(PC.location.ilike(f"%{location}%"))
         if date_from:
             query = query.filter(ChangeEvent.timestamp >= date_from)
         if date_to:
             query = query.filter(ChangeEvent.timestamp <= date_to)
         if search:
-            # Поиск по hostname или pc_id
+            # Поиск по hostname или pc_id (search уже нормализован на уровне API)
             search_filter = f"%{search}%"
             query = query.filter(
                 or_(

@@ -27,13 +27,22 @@ if 'sqlite' in DATABASE_URL:
         echo=False
     )
     # Включаем WAL режим после создания engine для лучшей параллельности
+    # Обрабатываем ошибки, если WAL не поддерживается (например, на сетевых дисках)
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA cache_size=10000")
-        cursor.execute("PRAGMA temp_store=MEMORY")
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            # Если WAL не поддерживается, используем DELETE режим (по умолчанию)
+            pass
+        try:
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA cache_size=10000")
+            cursor.execute("PRAGMA temp_store=MEMORY")
+        except Exception:
+            # Игнорируем ошибки для остальных PRAGMA
+            pass
         cursor.close()
 else:
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)

@@ -16,6 +16,7 @@ from api.dependencies import get_current_user
 from api.schemas.pc import PCListResponse, PCDetailResponse, SetBaselineResponse
 from api.schemas.location import UpdateLocationRequest, BulkUpdateLocationRequest, BulkUpdateLocationResponse
 from common.location_parser import update_pc_location
+from core.services.comparison_service import ComparisonService
 
 router = APIRouter(prefix="/api/pcs", tags=["PCs"])
 
@@ -57,23 +58,29 @@ async def get_pcs(
     # Обновляем статус offline перед получением списка
     pc_repo.update_offline_status(offline_threshold_minutes=10)
     
+    # Нормализуем все поисковые поля (приводим к нижнему регистру для регистронезависимого поиска)
+    normalized_building = building.lower().strip() if building else None
+    normalized_floor = floor.lower().strip() if floor else None
+    normalized_location = location.lower().strip() if location else None
+    normalized_search = search.lower().strip() if search else None
+    
     pcs = pc_repo.find_all(
         skip=skip, 
         limit=limit, 
         status=status,
-        building=building,
-        floor=floor,
-        location=location,
-        search=search,
+        building=normalized_building,
+        floor=normalized_floor,
+        location=normalized_location,
+        search=normalized_search,
         sort_by=sort_by,
         sort_order=sort_order
     )
     total = pc_repo.count_all(
         status=status,
-        building=building,
-        floor=floor,
-        location=location,
-        search=search
+        building=normalized_building,
+        floor=normalized_floor,
+        location=normalized_location,
+        search=normalized_search
     )
     
     # Оптимизация: используем таблицу текущего состояния для быстрого доступа
@@ -148,40 +155,266 @@ async def get_pc_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     pc_repo: PCRepository = Depends(get_pc_repository),
-    config_repo: ConfigRepository = Depends(get_config_repository)
+    config_repo: ConfigRepository = Depends(get_config_repository),
+    current_config_repo: CurrentConfigRepository = Depends(get_current_config_repository)
 ):
     """
     Получить историю изменений конфигурации ПК
     
+    Возвращает:
+    - Эталонную конфигурацию (baseline)
+    - Текущую конфигурацию
+    - События изменений (для восстановления промежуточных состояний)
+    
     Returns:
-        Список всех конфигураций ПК в хронологическом порядке
+        Эталонная конфигурация, текущая конфигурация и события изменений
     """
     # Проверяем, что ПК существует
     pc = pc_repo.find_by_id(pc_id)
     if not pc:
         raise HTTPException(status_code=404, detail="PC not found")
     
-    # Получаем все конфигурации для ПК
-    from infrastructure.database.models import PCConfiguration
-    configs = (
-        db.query(PCConfiguration)
-        .filter(PCConfiguration.pc_id == pc_id)
-        .order_by(PCConfiguration.timestamp.desc(), PCConfiguration.id.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    # Получаем эталонную конфигурацию
+    baseline = config_repo.find_baseline(pc_id)
     
-    total = (
-        db.query(PCConfiguration)
-        .filter(PCConfiguration.pc_id == pc_id)
-        .count()
-    )
+    # Получаем текущую конфигурацию
+    current_config = current_config_repo.find_by_pc_id(pc_id)
+    
+    # Получаем события изменений
+    from infrastructure.database.repositories.event_repository import EventRepository
+    event_repo = EventRepository(db)
+    events = event_repo.find_by_pc_id(pc_id, skip=skip, limit=limit)
+    total_events = event_repo.count_by_pc_id(pc_id)
+    
+    items = []
+    
+    # Добавляем эталонную конфигурацию
+    if baseline:
+        items.append(baseline.to_dict())
+    
+    # Добавляем текущую конфигурацию (если она отличается от эталонной)
+    if current_config:
+        current_dict = current_config.to_dict()
+        # Преобразуем в формат PCConfiguration для совместимости
+        current_dict['id'] = None  # У текущей конфигурации нет id в истории
+        current_dict['is_baseline'] = False
+        current_dict['timestamp'] = current_dict.get('updated_at')
+        items.append(current_dict)
     
     return {
         "pc_id": pc_id,
-        "total": total,
-        "items": [config.to_dict() for config in configs]
+        "total": len(items),
+        "items": items,
+        "events": {
+            "total": total_events,
+            "items": [event.to_dict() for event in events]
+        }
+    }
+
+
+@router.get("/{pc_id}/history/graph")
+async def get_pc_history_graph(
+    pc_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    pc_repo: PCRepository = Depends(get_pc_repository),
+    config_repo: ConfigRepository = Depends(get_config_repository),
+    current_config_repo: CurrentConfigRepository = Depends(get_current_config_repository)
+):
+    """
+    Получить данные для графа изменений конфигурации ПК
+    
+    Граф строится на основе:
+    - Эталонной конфигурации (baseline)
+    - Изменений (ChangeEvent) - группируются по времени
+    - Текущей конфигурации
+    
+    Returns:
+        Граф с узлами (эталонная, моменты изменений, текущая) и рёбрами (изменения)
+    """
+    from infrastructure.database.models import ChangeEvent
+    from infrastructure.database.repositories.event_repository import EventRepository
+    from collections import defaultdict
+    
+    # Проверяем, что ПК существует
+    pc = pc_repo.find_by_id(pc_id)
+    if not pc:
+        raise HTTPException(status_code=404, detail="PC not found")
+    
+    # Получаем эталонную конфигурацию
+    baseline = config_repo.find_baseline(pc_id)
+    
+    # Получаем все изменения в хронологическом порядке
+    event_repo = EventRepository(db)
+    all_events = event_repo.find_by_pc_id(pc_id, skip=0, limit=10000)  # Получаем все события
+    all_events.sort(key=lambda e: e.timestamp)  # Сортируем по времени (от старых к новым)
+    
+    # Получаем текущую конфигурацию
+    current_config = current_config_repo.find_by_pc_id(pc_id)
+    
+    nodes = []
+    edges = []
+    
+    # Узел 1: Эталонная конфигурация
+    if baseline:
+        baseline_timestamp = baseline.timestamp.isoformat() if baseline.timestamp else ""
+        baseline_date_str = baseline.timestamp.strftime("%Y-%m-%d %H:%M") if baseline.timestamp else ""
+        nodes.append({
+            "id": "baseline",
+            "label": f"Эталон\n{baseline_date_str}",
+            "title": f"Эталонная конфигурация\nВремя: {baseline_timestamp}",
+            "color": "#28a745",
+            "shape": "diamond",
+            "size": 25,
+            "type": "baseline",
+            "timestamp": baseline_timestamp
+        })
+    
+    # Группируем события по времени (с точностью до секунды)
+    events_by_time = defaultdict(list)
+    for event in all_events:
+        # Округляем до секунды для группировки
+        time_key = event.timestamp.replace(microsecond=0) if event.timestamp else None
+        if time_key:
+            events_by_time[time_key].append(event)
+    
+    # Создаем узлы для моментов изменений
+    change_nodes = {}
+    node_counter = 1
+    
+    for time_key in sorted(events_by_time.keys()):
+        events_at_time = events_by_time[time_key]
+        time_str = time_key.isoformat()
+        date_str = time_key.strftime("%Y-%m-%d %H:%M")
+        
+        # Подсчитываем типы изменений
+        change_types = [e.event_type for e in events_at_time]
+        change_components = list(set([e.component_type for e in events_at_time]))
+        
+        node_id = f"change_{node_counter}"
+        change_nodes[time_key] = node_id
+        node_counter += 1
+        
+        # Определяем цвет узла в зависимости от типа изменений
+        if 'removed' in change_types:
+            node_color = "#dc3545"  # красный - удаление
+        elif 'added' in change_types:
+            node_color = "#28a745"  # зелёный - добавление
+        else:
+            node_color = "#ffc107"  # жёлтый - замена
+        
+        nodes.append({
+            "id": node_id,
+            "label": f"Изменения\n{date_str}",
+            "title": f"Изменения: {len(events_at_time)} событий\nКомпоненты: {', '.join(change_components)}\nТипы: {', '.join(set(change_types))}",
+            "color": node_color,
+            "shape": "dot",
+            "size": 20,
+            "type": "change",
+            "timestamp": time_str,
+            "event_count": len(events_at_time)
+        })
+    
+    # Узел: Текущая конфигурация
+    if current_config:
+        current_timestamp = current_config.updated_at.isoformat() if current_config.updated_at else ""
+        current_date_str = current_config.updated_at.strftime("%Y-%m-%d %H:%M") if current_config.updated_at else "Текущая"
+        nodes.append({
+            "id": "current",
+            "label": f"Текущая\n{current_date_str}",
+            "title": f"Текущая конфигурация\nВремя: {current_timestamp}",
+            "color": "#007bff",
+            "shape": "star",
+            "size": 25,
+            "type": "current",
+            "timestamp": current_timestamp
+        })
+    
+    # Создаем рёбра
+    if baseline and change_nodes:
+        # Ребро от эталонной к первому изменению
+        first_change_time = min(change_nodes.keys())
+        first_change_id = change_nodes[first_change_time]
+        events_at_first = events_by_time[first_change_time]
+        
+        change_types = [e.event_type for e in events_at_first]
+        change_components = list(set([e.component_type for e in events_at_first]))
+        
+        if 'removed' in change_types:
+            edge_color = "#dc3545"
+        elif 'added' in change_types:
+            edge_color = "#28a745"
+        else:
+            edge_color = "#ffc107"
+        
+        edges.append({
+            "from": "baseline",
+            "to": first_change_id,
+            "label": f"{len(events_at_first)} изменений",
+            "title": f"Изменения: {', '.join(change_components)}\nТипы: {', '.join(set(change_types))}",
+            "color": {"color": edge_color},
+            "arrows": "to",
+            "width": min(len(events_at_first) * 2, 10)
+        })
+        
+        # Рёбра между изменениями
+        sorted_times = sorted(change_nodes.keys())
+        for i in range(len(sorted_times) - 1):
+            prev_time = sorted_times[i]
+            next_time = sorted_times[i + 1]
+            prev_id = change_nodes[prev_time]
+            next_id = change_nodes[next_time]
+            
+            events_at_next = events_by_time[next_time]
+            change_types = [e.event_type for e in events_at_next]
+            change_components = list(set([e.component_type for e in events_at_next]))
+            
+            if 'removed' in change_types:
+                edge_color = "#dc3545"
+            elif 'added' in change_types:
+                edge_color = "#28a745"
+            else:
+                edge_color = "#ffc107"
+            
+            edges.append({
+                "from": prev_id,
+                "to": next_id,
+                "label": f"{len(events_at_next)} изменений",
+                "title": f"Изменения: {', '.join(change_components)}\nТипы: {', '.join(set(change_types))}",
+                "color": {"color": edge_color},
+                "arrows": "to",
+                "width": min(len(events_at_next) * 2, 10)
+            })
+        
+        # Ребро от последнего изменения к текущей конфигурации
+        if current_config:
+            last_change_time = max(change_nodes.keys())
+            last_change_id = change_nodes[last_change_time]
+            edges.append({
+                "from": last_change_id,
+                "to": "current",
+                "label": "Текущее состояние",
+                "title": "Текущая конфигурация",
+                "color": {"color": "#007bff"},
+                "arrows": "to",
+                "width": 2
+            })
+    elif baseline and current_config:
+        # Нет изменений, но есть эталонная и текущая
+        edges.append({
+            "from": "baseline",
+            "to": "current",
+            "label": "Без изменений",
+            "title": "Конфигурация не изменилась",
+            "color": {"color": "#6c757d"},
+            "arrows": "to",
+            "width": 1,
+            "dashes": True
+        })
+    
+    return {
+        "nodes": nodes,
+        "edges": edges
     }
 
 
