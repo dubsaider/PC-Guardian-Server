@@ -41,6 +41,8 @@ async def get_events(
     event_repo: EventRepository = Depends(get_event_repository)
 ):
     """Получить все события с фильтрацией и сортировкой"""
+    from common.utils import normalize_search_fields
+    
     # Парсим даты
     date_from_dt = None
     date_to_dt = None
@@ -56,10 +58,11 @@ async def get_events(
             pass
     
     # Нормализуем все поисковые поля (приводим к нижнему регистру для регистронезависимого поиска)
-    normalized_building = building.lower().strip() if building else None
-    normalized_floor = floor.lower().strip() if floor else None
-    normalized_location = location.lower().strip() if location else None
-    normalized_search = search.lower().strip() if search else None
+    normalized = normalize_search_fields(building, floor, location, search)
+    normalized_building = normalized['building']
+    normalized_floor = normalized['floor']
+    normalized_location = normalized['location']
+    normalized_search = normalized['search']
     
     events = event_repo.find_all(
         skip=skip,

@@ -55,14 +55,17 @@ async def get_pcs(
     current_config_repo: CurrentConfigRepository = Depends(get_current_config_repository)
 ):
     """Получить список ПК с фильтрацией и сортировкой"""
+    from common.utils import normalize_search_fields, extract_ip_addresses_from_config
+    
     # Обновляем статус offline перед получением списка
     pc_repo.update_offline_status(offline_threshold_minutes=10)
     
     # Нормализуем все поисковые поля (приводим к нижнему регистру для регистронезависимого поиска)
-    normalized_building = building.lower().strip() if building else None
-    normalized_floor = floor.lower().strip() if floor else None
-    normalized_location = location.lower().strip() if location else None
-    normalized_search = search.lower().strip() if search else None
+    normalized = normalize_search_fields(building, floor, location, search)
+    normalized_building = normalized['building']
+    normalized_floor = normalized['floor']
+    normalized_location = normalized['location']
+    normalized_search = normalized['search']
     
     pcs = pc_repo.find_all(
         skip=skip, 
@@ -105,31 +108,12 @@ async def get_pcs(
             # Версия агента
             pc_dict['agent_version'] = current_config.agent_version
             
-            # IP-адреса из network_adapters
-            ip_addresses = []
-            if current_config.network_adapters:
-                try:
-                    network_data = current_config.get_component('network_adapters')
-                    if network_data and isinstance(network_data, list):
-                        for adapter in network_data:
-                            if isinstance(adapter, dict):
-                                adapter_ips = adapter.get('ip_addresses', [])
-                                if adapter_ips:
-                                    # Фильтруем только IPv4 адреса (без IPv6)
-                                    for ip in adapter_ips:
-                                        if ':' not in ip:  # IPv4 не содержит двоеточий
-                                            ip_addresses.append(ip)
-                except Exception as e:
-                    # Логируем ошибку для отладки
-                    import logging
-                    logging.getLogger(__name__).warning(f"Error parsing network_adapters for {pc.pc_id}: {e}", exc_info=True)
+            # IP-адреса из network_adapters (используем утилиту)
+            ip_addresses = extract_ip_addresses_from_config(current_config)
             
-            # Берем первый IPv4 адрес или все, если их немного
             if ip_addresses:
-                # Убираем дубликаты и берем до 3 адресов
-                unique_ips = list(dict.fromkeys(ip_addresses))[:3]
-                pc_dict['ip_addresses'] = unique_ips
-                pc_dict['ip_address'] = unique_ips[0]  # Основной IP для отображения
+                pc_dict['ip_addresses'] = ip_addresses
+                pc_dict['ip_address'] = ip_addresses[0]  # Основной IP для отображения
             else:
                 pc_dict['ip_addresses'] = []
                 pc_dict['ip_address'] = None

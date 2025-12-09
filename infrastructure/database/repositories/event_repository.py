@@ -3,6 +3,7 @@
 """
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
+from sqlalchemy.orm.query import Query
 from typing import Optional, List
 from datetime import datetime, timedelta
 
@@ -30,10 +31,9 @@ class EventRepository:
         """Подсчитать количество событий для ПК"""
         return self.db.query(ChangeEvent).filter(ChangeEvent.pc_id == pc_id).count()
     
-    def find_all(
+    def _apply_filters(
         self,
-        skip: int = 0,
-        limit: int = 100,
+        query: Query,
         pc_id: Optional[str] = None,
         component_type: Optional[str] = None,
         event_type: Optional[str] = None,
@@ -42,13 +42,26 @@ class EventRepository:
         location: Optional[str] = None,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
-        search: Optional[str] = None,
-        sort_by: Optional[str] = None,
-        sort_order: str = 'desc'
-    ) -> List[ChangeEvent]:
-        """Найти все события с фильтрацией и сортировкой"""
-        query = self.db.query(ChangeEvent).join(PC, ChangeEvent.pc_id == PC.pc_id)
+        search: Optional[str] = None
+    ) -> Query:
+        """
+        Применить фильтры к запросу (общая логика для find_all и count_all)
         
+        Args:
+            query: SQLAlchemy запрос
+            pc_id: Фильтр по PC ID
+            component_type: Фильтр по типу компонента
+            event_type: Фильтр по типу события
+            building: Фильтр по корпусу (уже нормализован)
+            floor: Фильтр по этажу (уже нормализован)
+            location: Фильтр по локации (уже нормализован)
+            date_from: Фильтр по начальной дате
+            date_to: Фильтр по конечной дате
+            search: Поисковый запрос (уже нормализован)
+            
+        Returns:
+            Запрос с примененными фильтрами
+        """
         # Фильтры
         if pc_id:
             query = query.filter(ChangeEvent.pc_id == pc_id)
@@ -78,6 +91,33 @@ class EventRepository:
                     ChangeEvent.pc_id.ilike(search_filter)
                 )
             )
+        
+        return query
+    
+    def find_all(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        pc_id: Optional[str] = None,
+        component_type: Optional[str] = None,
+        event_type: Optional[str] = None,
+        building: Optional[str] = None,
+        floor: Optional[str] = None,
+        location: Optional[str] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        search: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: str = 'desc'
+    ) -> List[ChangeEvent]:
+        """Найти все события с фильтрацией и сортировкой"""
+        query = self.db.query(ChangeEvent).join(PC, ChangeEvent.pc_id == PC.pc_id)
+        
+        # Применяем фильтры (общая логика)
+        query = self._apply_filters(
+            query, pc_id, component_type, event_type,
+            building, floor, location, date_from, date_to, search
+        )
         
         # Сортировка
         if sort_by:
@@ -108,35 +148,11 @@ class EventRepository:
         """Подсчитать общее количество событий с фильтрацией"""
         query = self.db.query(ChangeEvent).join(PC, ChangeEvent.pc_id == PC.pc_id)
         
-        # Фильтры
-        if pc_id:
-            query = query.filter(ChangeEvent.pc_id == pc_id)
-        if component_type:
-            query = query.filter(ChangeEvent.component_type == component_type)
-        if event_type:
-            query = query.filter(ChangeEvent.event_type == event_type)
-        if building:
-            # Регистронезависимый поиск по корпусу (building уже нормализован на уровне API)
-            query = query.filter(PC.building.ilike(f"%{building}%"))
-        if floor:
-            # Регистронезависимый поиск по этажу (floor уже нормализован на уровне API)
-            query = query.filter(PC.floor.ilike(f"%{floor}%"))
-        if location:
-            # Регистронезависимый поиск по локации (location уже нормализован на уровне API)
-            query = query.filter(PC.location.ilike(f"%{location}%"))
-        if date_from:
-            query = query.filter(ChangeEvent.timestamp >= date_from)
-        if date_to:
-            query = query.filter(ChangeEvent.timestamp <= date_to)
-        if search:
-            # Поиск по hostname или pc_id (search уже нормализован на уровне API)
-            search_filter = f"%{search}%"
-            query = query.filter(
-                or_(
-                    PC.hostname.ilike(search_filter),
-                    ChangeEvent.pc_id.ilike(search_filter)
-                )
-            )
+        # Применяем фильтры (общая логика)
+        query = self._apply_filters(
+            query, pc_id, component_type, event_type,
+            building, floor, location, date_from, date_to, search
+        )
         
         return query.count()
     

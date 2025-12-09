@@ -3,10 +3,12 @@
 """
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+from sqlalchemy.orm.query import Query
 from typing import Optional, List
 from datetime import datetime
 
 from infrastructure.database.models import PC, PCCurrentConfiguration
+from common.utils import find_pc_ids_by_ip_search
 
 
 class PCRepository:
@@ -19,21 +21,29 @@ class PCRepository:
         """Найти ПК по ID"""
         return self.db.query(PC).filter(PC.pc_id == pc_id).first()
     
-    def find_all(
-        self, 
-        skip: int = 0, 
-        limit: int = 100, 
+    def _apply_filters(
+        self,
+        query: Query,
         status: Optional[str] = None,
         building: Optional[str] = None,
         floor: Optional[str] = None,
         location: Optional[str] = None,
-        search: Optional[str] = None,
-        sort_by: Optional[str] = None,
-        sort_order: str = 'asc'
-    ) -> List[PC]:
-        """Найти все ПК с фильтрацией и сортировкой"""
-        query = self.db.query(PC)
+        search: Optional[str] = None
+    ) -> Query:
+        """
+        Применить фильтры к запросу (общая логика для find_all и count_all)
         
+        Args:
+            query: SQLAlchemy запрос
+            status: Фильтр по статусу
+            building: Фильтр по корпусу (уже нормализован)
+            floor: Фильтр по этажу (уже нормализован)
+            location: Фильтр по локации (уже нормализован)
+            search: Поисковый запрос (уже нормализован)
+            
+        Returns:
+            Запрос с примененными фильтрами
+        """
         # Фильтры
         if status:
             query = query.filter(PC.status == status)
@@ -51,30 +61,12 @@ class PCRepository:
             # search уже нормализован к нижнему регистру на уровне API
             search_filter = f"%{search}%"
             
-            # Оптимизация: используем таблицу текущих конфигураций для поиска по IP
-            # Получаем список PC ID, у которых в текущей конфигурации есть IP-адреса, содержащие подстроку
-            current_configs = self.db.query(PCCurrentConfiguration).filter(
-                PCCurrentConfiguration.network_adapters.isnot(None)
-            ).all()
-            
-            # Собираем список PC ID, где IP-адреса содержат подстроку (регистронезависимый поиск)
-            matching_pc_ids = []
-            for current_config in current_configs:
-                try:
-                    if current_config.network_adapters:
-                        network_data = current_config.get_component('network_adapters')
-                        if isinstance(network_data, list):
-                            for adapter in network_data:
-                                if isinstance(adapter, dict):
-                                    ip_addresses = adapter.get('ip_addresses', [])
-                                    if ip_addresses:
-                                        for ip in ip_addresses:
-                                            # search уже в нижнем регистре, приводим IP к нижнему для сравнения
-                                            if search in ip.lower():
-                                                matching_pc_ids.append(current_config.pc_id)
-                                                break
-                except:
-                    continue
+            # Используем утилиту для поиска PC по IP-адресам
+            matching_pc_ids = find_pc_ids_by_ip_search(
+                self.db,
+                PCCurrentConfiguration,
+                search
+            )
             
             # Строим фильтр: hostname, pc_id или IP-адреса
             # Используем ilike для регистронезависимого поиска (search уже нормализован)
@@ -87,6 +79,26 @@ class PCRepository:
                 filters.append(PC.pc_id.in_(matching_pc_ids))
             
             query = query.filter(or_(*filters))
+        
+        return query
+    
+    def find_all(
+        self, 
+        skip: int = 0, 
+        limit: int = 100, 
+        status: Optional[str] = None,
+        building: Optional[str] = None,
+        floor: Optional[str] = None,
+        location: Optional[str] = None,
+        search: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: str = 'asc'
+    ) -> List[PC]:
+        """Найти все ПК с фильтрацией и сортировкой"""
+        query = self.db.query(PC)
+        
+        # Применяем фильтры (общая логика)
+        query = self._apply_filters(query, status, building, floor, location, search)
         
         # Сортировка
         if sort_by:
@@ -113,59 +125,8 @@ class PCRepository:
         """Подсчитать общее количество ПК с фильтрацией"""
         query = self.db.query(PC)
         
-        # Фильтры
-        if status:
-            query = query.filter(PC.status == status)
-        if building:
-            # Регистронезависимый поиск по корпусу
-            query = query.filter(PC.building.ilike(f"%{building}%"))
-        if floor:
-            # Регистронезависимый поиск по этажу
-            query = query.filter(PC.floor.ilike(f"%{floor}%"))
-        if location:
-            # Регистронезависимый поиск по локации
-            query = query.filter(PC.location.ilike(f"%{location}%"))
-        if search:
-            # Поиск по hostname, pc_id или IP-адресам (подстрока)
-            # search уже нормализован к нижнему регистру на уровне API
-            search_filter = f"%{search}%"
-            
-            # Оптимизация: используем таблицу текущих конфигураций для поиска по IP
-            # Получаем список PC ID, у которых в текущей конфигурации есть IP-адреса, содержащие подстроку
-            current_configs = self.db.query(PCCurrentConfiguration).filter(
-                PCCurrentConfiguration.network_adapters.isnot(None)
-            ).all()
-            
-            # Собираем список PC ID, где IP-адреса содержат подстроку (регистронезависимый поиск)
-            matching_pc_ids = []
-            for current_config in current_configs:
-                try:
-                    if current_config.network_adapters:
-                        network_data = current_config.get_component('network_adapters')
-                        if isinstance(network_data, list):
-                            for adapter in network_data:
-                                if isinstance(adapter, dict):
-                                    ip_addresses = adapter.get('ip_addresses', [])
-                                    if ip_addresses:
-                                        for ip in ip_addresses:
-                                            # search уже в нижнем регистре, приводим IP к нижнему для сравнения
-                                            if search in ip.lower():
-                                                matching_pc_ids.append(current_config.pc_id)
-                                                break
-                except:
-                    continue
-            
-            # Строим фильтр: hostname, pc_id или IP-адреса
-            # Используем ilike для регистронезависимого поиска (search уже нормализован)
-            filters = [
-                PC.hostname.ilike(search_filter),
-                PC.pc_id.ilike(search_filter)
-            ]
-            
-            if matching_pc_ids:
-                filters.append(PC.pc_id.in_(matching_pc_ids))
-            
-            query = query.filter(or_(*filters))
+        # Применяем фильтры (общая логика)
+        query = self._apply_filters(query, status, building, floor, location, search)
         
         return query.count()
     
