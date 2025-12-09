@@ -48,11 +48,42 @@
 <!-- Фильтры -->
 <div class="row mb-3">
     <div class="col-12">
-        <div class="btn-group" role="group">
-            <button type="button" class="btn btn-outline-primary active" data-status="all">Все</button>
-            <button type="button" class="btn btn-outline-success" data-status="normal">В норме</button>
-            <button type="button" class="btn btn-outline-warning" data-status="changed">Изменения</button>
-            <button type="button" class="btn btn-outline-danger" data-status="offline">Нет связи</button>
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-2">
+                        <label class="form-label">Статус</label>
+                        <select class="form-select" id="filter-status">
+                            <option value="">Все</option>
+                            <option value="normal">В норме</option>
+                            <option value="changed">Изменения</option>
+                            <option value="offline">Нет связи</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Корпус</label>
+                        <input type="text" class="form-control" id="filter-building" placeholder="Корпус">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Этаж</label>
+                        <input type="text" class="form-control" id="filter-floor" placeholder="Этаж">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Локация</label>
+                        <input type="text" class="form-control" id="filter-location" placeholder="Локация">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Поиск (hostname/IP)</label>
+                        <input type="text" class="form-control" id="filter-search" placeholder="Поиск...">
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-secondary w-100" onclick="resetFilters()" title="Сбросить фильтры">
+                            <i class="bi bi-x-circle"></i> Сброс
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -61,28 +92,47 @@
 <div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Список ПК</h5>
+                <span class="badge bg-secondary" id="total-count">0</span>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
                     <table class="table table-hover" id="pcs-table">
                         <thead>
                             <tr>
-                                <th>PC ID</th>
-                                <th>Имя хоста</th>
-                                <th>Статус</th>
-                                <th>Последний контакт</th>
+                                <th style="cursor: pointer;" onclick="sortTable('pc_id')">
+                                    PC ID <i class="bi bi-arrow-down-up" id="sort-pc_id"></i>
+                                </th>
+                                <th style="cursor: pointer;" onclick="sortTable('hostname')">
+                                    Имя хоста <i class="bi bi-arrow-down-up" id="sort-hostname"></i>
+                                </th>
+                                <th style="cursor: pointer;" onclick="sortTable('status')">
+                                    Статус <i class="bi bi-arrow-down-up" id="sort-status"></i>
+                                </th>
+                                <th>IP-адрес</th>
+                                <th>Версия агента</th>
+                                <th style="cursor: pointer;" onclick="sortTable('location')">
+                                    Локация <i class="bi bi-arrow-down-up" id="sort-location"></i>
+                                </th>
+                                <th style="cursor: pointer;" onclick="sortTable('last_seen')">
+                                    Последний контакт <i class="bi bi-arrow-down-up" id="sort-last_seen"></i>
+                                </th>
                                 <th>Действия</th>
                             </tr>
                         </thead>
                         <tbody id="pcs-tbody">
                             <tr>
-                                <td colspan="5" class="text-center">Загрузка...</td>
+                                <td colspan="6" class="text-center">Загрузка...</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
+                <!-- Пагинация -->
+                <nav aria-label="Page navigation">
+                    <ul class="pagination justify-content-center" id="pagination">
+                    </ul>
+                </nav>
             </div>
         </div>
     </div>
@@ -91,7 +141,19 @@
 
 {% block scripts %}
 <script>
-let currentStatus = 'all';
+let currentFilters = {
+    status: '',
+    building: '',
+    floor: '',
+    location: '',
+    search: '',
+    sort_by: 'hostname',
+    sort_order: 'asc',
+    skip: 0,
+    limit: 50
+};
+let currentPage = 1;
+let totalPages = 1;
 
 function loadStats() {
     fetch('/api/stats', {
@@ -114,11 +176,20 @@ function loadStats() {
     });
 }
 
-function loadPCs(status = 'all') {
-    let url = '/api/pcs?limit=100';
-    if (status !== 'all') {
-        url += '&status=' + status;
-    }
+function buildUrl() {
+    let url = `/api/pcs?skip=${currentFilters.skip}&limit=${currentFilters.limit}`;
+    if (currentFilters.status) url += `&status=${currentFilters.status}`;
+    if (currentFilters.building) url += `&building=${encodeURIComponent(currentFilters.building)}`;
+    if (currentFilters.floor) url += `&floor=${encodeURIComponent(currentFilters.floor)}`;
+    if (currentFilters.location) url += `&location=${encodeURIComponent(currentFilters.location)}`;
+    if (currentFilters.search) url += `&search=${encodeURIComponent(currentFilters.search)}`;
+    if (currentFilters.sort_by) url += `&sort_by=${currentFilters.sort_by}`;
+    if (currentFilters.sort_order) url += `&sort_order=${currentFilters.sort_order}`;
+    return url;
+}
+
+function loadPCs() {
+    const url = buildUrl();
     
     fetch(url, {
         credentials: 'include'
@@ -135,10 +206,15 @@ function loadPCs(status = 'all') {
         const tbody = document.getElementById('pcs-tbody');
         tbody.innerHTML = '';
         
+        document.getElementById('total-count').textContent = data.total;
+        
         if (data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center">Нет данных</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center">Нет данных</td></tr>';
             return;
         }
+        
+        totalPages = Math.ceil(data.total / currentFilters.limit);
+        updatePagination();
         
         data.items.forEach(pc => {
             const row = document.createElement('tr');
@@ -151,11 +227,23 @@ function loadPCs(status = 'all') {
             }[pc.status] || '❓';
             
             const lastSeen = pc.last_seen ? new Date(pc.last_seen).toLocaleString('ru-RU') : 'Никогда';
+            const location = pc.location || '-';
+            const ipAddress = pc.ip_address || (pc.ip_addresses && pc.ip_addresses.length > 0 ? pc.ip_addresses[0] : '-');
+            const agentVersion = pc.agent_version || '-';
+            
+            // Форматируем IP-адреса (если их несколько, показываем первый и количество)
+            let ipDisplay = ipAddress;
+            if (pc.ip_addresses && pc.ip_addresses.length > 1) {
+                ipDisplay = `${ipAddress} <span class="text-muted small">(+${pc.ip_addresses.length - 1})</span>`;
+            }
             
             row.innerHTML = `
                 <td>${pc.pc_id}</td>
                 <td>${pc.hostname}</td>
                 <td><span class="${statusClass}">${statusIcon} ${pc.status}</span></td>
+                <td>${ipDisplay}</td>
+                <td><span class="badge bg-secondary">${agentVersion}</span></td>
+                <td>${location}</td>
                 <td>${lastSeen}</td>
                 <td>
                     <a href="/pc/${pc.pc_id}" class="btn btn-sm btn-primary">
@@ -165,18 +253,152 @@ function loadPCs(status = 'all') {
             `;
             tbody.appendChild(row);
         });
+        
+        updateSortIcons();
     });
 }
 
-// Фильтры
-document.querySelectorAll('[data-status]').forEach(btn => {
-    btn.addEventListener('click', function() {
-        document.querySelectorAll('[data-status]').forEach(b => b.classList.remove('active'));
-        this.classList.add('active');
-        currentStatus = this.dataset.status;
-        loadPCs(currentStatus);
+function applyFilters() {
+    currentFilters.status = document.getElementById('filter-status').value;
+    currentFilters.building = document.getElementById('filter-building').value.trim();
+    currentFilters.floor = document.getElementById('filter-floor').value.trim();
+    currentFilters.location = document.getElementById('filter-location').value.trim();
+    currentFilters.search = document.getElementById('filter-search').value.trim();
+    currentFilters.skip = 0;
+    currentPage = 1;
+    loadPCs();
+}
+
+function sortTable(column) {
+    if (currentFilters.sort_by === column) {
+        currentFilters.sort_order = currentFilters.sort_order === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentFilters.sort_by = column;
+        currentFilters.sort_order = 'asc';
+    }
+    currentFilters.skip = 0;
+    currentPage = 1;
+    loadPCs();
+}
+
+function updateSortIcons() {
+    // Сбрасываем все иконки
+    document.querySelectorAll('[id^="sort-"]').forEach(icon => {
+        icon.className = 'bi bi-arrow-down-up';
     });
-});
+    
+    // Устанавливаем иконку для текущей сортировки
+    const icon = document.getElementById(`sort-${currentFilters.sort_by}`);
+    if (icon) {
+        icon.className = currentFilters.sort_order === 'asc' 
+            ? 'bi bi-arrow-up' 
+            : 'bi bi-arrow-down';
+    }
+}
+
+function updatePagination() {
+    const pagination = document.getElementById('pagination');
+    pagination.innerHTML = '';
+    
+    if (totalPages <= 1) return;
+    
+    // Предыдущая страница
+    const prevLi = document.createElement('li');
+    prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+    prevLi.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${currentPage - 1}); return false;">Предыдущая</a>`;
+    pagination.appendChild(prevLi);
+    
+    // Номера страниц
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+    
+    if (startPage > 1) {
+        const li = document.createElement('li');
+        li.className = 'page-item';
+        li.innerHTML = `<a class="page-link" href="#" onclick="goToPage(1); return false;">1</a>`;
+        pagination.appendChild(li);
+        if (startPage > 2) {
+            const li = document.createElement('li');
+            li.className = 'page-item disabled';
+            li.innerHTML = `<span class="page-link">...</span>`;
+            pagination.appendChild(li);
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${i}); return false;">${i}</a>`;
+        pagination.appendChild(li);
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            const li = document.createElement('li');
+            li.className = 'page-item disabled';
+            li.innerHTML = `<span class="page-link">...</span>`;
+            pagination.appendChild(li);
+        }
+        const li = document.createElement('li');
+        li.className = 'page-item';
+        li.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${totalPages}); return false;">${totalPages}</a>`;
+        pagination.appendChild(li);
+    }
+    
+    // Следующая страница
+    const nextLi = document.createElement('li');
+    nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+    nextLi.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${currentPage + 1}); return false;">Следующая</a>`;
+    pagination.appendChild(nextLi);
+}
+
+function goToPage(page) {
+    if (page < 1 || page > totalPages) return;
+    currentPage = page;
+    currentFilters.skip = (page - 1) * currentFilters.limit;
+    loadPCs();
+}
+
+function resetFilters() {
+    document.getElementById('filter-status').value = '';
+    document.getElementById('filter-building').value = '';
+    document.getElementById('filter-floor').value = '';
+    document.getElementById('filter-location').value = '';
+    document.getElementById('filter-search').value = '';
+    currentFilters = {
+        status: '',
+        building: '',
+        floor: '',
+        location: '',
+        search: '',
+        sort_by: 'hostname',
+        sort_order: 'asc',
+        skip: 0,
+        limit: 50
+    };
+    currentPage = 1;
+    loadPCs();
+}
+
+// Автоматическая фильтрация при изменении полей
+document.getElementById('filter-status').addEventListener('change', applyFilters);
+document.getElementById('filter-building').addEventListener('input', debounce(applyFilters, 500));
+document.getElementById('filter-floor').addEventListener('input', debounce(applyFilters, 500));
+document.getElementById('filter-location').addEventListener('input', debounce(applyFilters, 500));
+document.getElementById('filter-search').addEventListener('input', debounce(applyFilters, 500));
+
+// Функция debounce для задержки вызова при вводе текста
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
 
 // Загрузка данных
 loadStats();
@@ -185,8 +407,7 @@ loadPCs();
 // Обновление каждые 30 секунд
 setInterval(() => {
     loadStats();
-    loadPCs(currentStatus);
+    loadPCs();
 }, 30000);
 </script>
 {% endblock %}
-

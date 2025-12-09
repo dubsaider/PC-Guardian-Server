@@ -10,7 +10,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 import bcrypt
-from database import Base, engine, SessionLocal, User
+from infrastructure.database.session import Base, engine, SessionLocal
+from infrastructure.database.models import User
 
 def add_user(username: str, email: str, password: str, role: str = "viewer"):
     """Добавить пользователя в БД"""

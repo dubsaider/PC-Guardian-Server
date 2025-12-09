@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+
+{% block title %}История изменений - {{ pc.hostname }} - PC-Guardian{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Дашборд</a></li>
+                <li class="breadcrumb-item"><a href="/pc/{{ pc.pc_id }}">{{ pc.hostname }}</a></li>
+                <li class="breadcrumb-item active">История изменений</li>
+            </ol>
+        </nav>
+        <h1>
+            <i class="bi bi-clock-history"></i> История изменений конфигурации
+            <small class="text-muted">{{ pc.hostname }}</small>
+        </h1>
+    </div>
+</div>
+
+<!-- Фильтры -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label for="filter-component" class="form-label">Компонент</label>
+                        <select class="form-select" id="filter-component">
+                            <option value="">Все компоненты</option>
+                            <option value="motherboard">Материнская плата</option>
+                            <option value="cpu">Процессор</option>
+                            <option value="ram_modules">RAM</option>
+                            <option value="storage_devices">Накопители</option>
+                            <option value="gpu">Видеокарта</option>
+                            <option value="network_adapters">Сетевые адаптеры</option>
+                            <option value="psu">Блок питания</option>
+                            <option value="peripherals">Периферия</option>
+                            <option value="system_info">Системная информация</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="filter-date-from" class="form-label">С даты</label>
+                        <input type="date" class="form-control" id="filter-date-from">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="filter-date-to" class="form-label">По дату</label>
+                        <input type="date" class="form-control" id="filter-date-to">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <div>
+                            <button class="btn btn-primary w-100" onclick="applyFilters()">
+                                <i class="bi bi-funnel"></i> Применить фильтры
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Граф изменений -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Граф изменений</h5>
+            </div>
+            <div class="card-body">
+                <div id="history-graph" style="min-height: 400px;">
+                    <p class="text-muted text-center">Загрузка графа...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Таблица истории -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-list-ul"></i> История конфигураций</h5>
+                <div>
+                    <span class="text-muted me-3">Всего: <strong id="total-count">0</strong></span>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="exportHistory()">
+                        <i class="bi bi-download"></i> Экспорт
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Дата/Время</th>
+                                <th>Версия агента</th>
+                                <th>Компоненты</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-tbody">
+                            <tr>
+                                <td colspan="4" class="text-center">Загрузка...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <nav aria-label="Пагинация истории">
+                    <ul class="pagination justify-content-center" id="history-pagination">
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для просмотра конфигурации -->
+<div class="modal fade" id="configModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Конфигурация от <span id="modal-timestamp"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modal-config-content">
+                <p class="text-muted">Загрузка...</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const pcId = '{{ pc.pc_id }}';
+let currentPage = 1;
+let pageSize = 20;
+let currentFilters = {
+    component: '',
+    dateFrom: '',
+    dateTo: ''
+};
+
+// Загрузка истории
+function loadHistory(page = 1) {
+    currentPage = page;
+    let url = `/api/pcs/${pcId}/history?skip=${(page - 1) * pageSize}&limit=${pageSize}`;
+    
+    fetch(url, {
+        credentials: 'include'
+    })
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        return r.json();
+    })
+    .then(data => {
+        if (!data) return;
+        
+        document.getElementById('total-count').textContent = data.total;
+        renderHistoryTable(data.items);
+        renderPagination(data.total);
+        renderGraph(data.items);
+    })
+    .catch(e => {
+        console.error('Ошибка загрузки истории:', e);
+        document.getElementById('history-tbody').innerHTML = 
+            '<tr><td colspan="4" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
+    });
+}
+
+// Отображение таблицы истории
+function renderHistoryTable(configs) {
+    const tbody = document.getElementById('history-tbody');
+    tbody.innerHTML = '';
+    
+    if (configs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">Нет данных</td></tr>';
+        return;
+    }
+    
+    configs.forEach((config, index) => {
+        const row = document.createElement('tr');
+        const timestamp = new Date(config.timestamp);
+        const isBaseline = config.is_baseline;
+        
+        // Подсчитываем количество компонентов
+        const components = [];
+        if (config.motherboard) components.push('MB');
+        if (config.cpu) components.push('CPU');
+        if (config.ram_modules && config.ram_modules.length > 0) components.push('RAM');
+        if (config.storage_devices && config.storage_devices.length > 0) components.push('Storage');
+        if (config.gpu) components.push('GPU');
+        if (config.network_adapters && config.network_adapters.length > 0) components.push('Network');
+        if (config.psu) components.push('PSU');
+        if (config.peripherals && config.peripherals.length > 0) components.push('Peripherals');
+        if (config.system_info) components.push('System');
+        
+        row.innerHTML = `
+            <td>
+                ${timestamp.toLocaleString('ru-RU')}
+                ${isBaseline ? ' <span class="badge bg-primary">Эталон</span>' : ''}
+            </td>
+            <td>${config.agent_version || '-'}</td>
+            <td>
+                <span class="badge bg-secondary me-1">${components.length} компонентов</span>
+                <small class="text-muted">${components.join(', ')}</small>
+            </td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="viewConfig(${config.id})">
+                    <i class="bi bi-eye"></i> Просмотр
+                </button>
+                ${isBaseline ? '' : `
+                    <button class="btn btn-sm btn-outline-success" onclick="compareWithBaseline(${config.id})">
+                        <i class="bi bi-arrow-left-right"></i> Сравнить
+                    </button>
+                `}
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// Пагинация
+function renderPagination(total) {
+    const pagination = document.getElementById('history-pagination');
+    pagination.innerHTML = '';
+    
+    const totalPages = Math.ceil(total / pageSize);
+    if (totalPages <= 1) return;
+    
+    // Предыдущая страница
+    const prevLi = document.createElement('li');
+    prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+    prevLi.innerHTML = `<a class="page-link" href="#" onclick="loadHistory(${currentPage - 1}); return false;">Предыдущая</a>`;
+    pagination.appendChild(prevLi);
+    
+    // Номера страниц
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+    
+    if (startPage > 1) {
+        const firstLi = document.createElement('li');
+        firstLi.className = 'page-item';
+        firstLi.innerHTML = `<a class="page-link" href="#" onclick="loadHistory(1); return false;">1</a>`;
+        pagination.appendChild(firstLi);
+        if (startPage > 2) {
+            const ellipsis = document.createElement('li');
+            ellipsis.className = 'page-item disabled';
+            ellipsis.innerHTML = '<span class="page-link">...</span>';
+            pagination.appendChild(ellipsis);
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#" onclick="loadHistory(${i}); return false;">${i}</a>`;
+        pagination.appendChild(li);
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            const ellipsis = document.createElement('li');
+            ellipsis.className = 'page-item disabled';
+            ellipsis.innerHTML = '<span class="page-link">...</span>';
+            pagination.appendChild(ellipsis);
+        }
+        const lastLi = document.createElement('li');
+        lastLi.className = 'page-item';
+        lastLi.innerHTML = `<a class="page-link" href="#" onclick="loadHistory(${totalPages}); return false;">${totalPages}</a>`;
+        pagination.appendChild(lastLi);
+    }
+    
+    // Следующая страница
+    const nextLi = document.createElement('li');
+    nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+    nextLi.innerHTML = `<a class="page-link" href="#" onclick="loadHistory(${currentPage + 1}); return false;">Следующая</a>`;
+    pagination.appendChild(nextLi);
+}
+
+// Граф изменений
+let historyChart = null;
+function renderGraph(configs) {
+    const ctx = document.getElementById('history-graph');
+    if (!ctx) return;
+    
+    // Подготавливаем данные для графа
+    const dates = configs.map(c => new Date(c.timestamp));
+    const components = ['motherboard', 'cpu', 'ram_modules', 'storage_devices', 'gpu', 'network_adapters', 'psu', 'peripherals'];
+    const datasets = components.map(component => {
+        const data = configs.map((config, index) => {
+            const hasComponent = config[component] && 
+                (Array.isArray(config[component]) ? config[component].length > 0 : true);
+            return hasComponent ? 1 : 0;
+        });
+        return {
+            label: getComponentName(component),
+            data: data,
+            borderColor: getComponentColor(component),
+            backgroundColor: getComponentColor(component) + '40',
+            tension: 0.1,
+            fill: false
+        };
+    });
+    
+    if (historyChart) {
+        historyChart.destroy();
+    }
+    
+    historyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dates.map(d => d.toLocaleDateString('ru-RU')),
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                title: {
+                    display: true,
+                    text: 'История изменений компонентов'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 1,
+                    ticks: {
+                        stepSize: 1,
+                        callback: function(value) {
+                            return value === 1 ? 'Есть' : 'Нет';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function getComponentName(component) {
+    const names = {
+        'motherboard': 'Материнская плата',
+        'cpu': 'Процессор',
+        'ram_modules': 'RAM',
+        'storage_devices': 'Накопители',
+        'gpu': 'Видеокарта',
+        'network_adapters': 'Сеть',
+        'psu': 'БП',
+        'peripherals': 'Периферия'
+    };
+    return names[component] || component;
+}
+
+function getComponentColor(component) {
+    const colors = {
+        'motherboard': 'rgb(255, 99, 132)',
+        'cpu': 'rgb(54, 162, 235)',
+        'ram_modules': 'rgb(255, 205, 86)',
+        'storage_devices': 'rgb(75, 192, 192)',
+        'gpu': 'rgb(153, 102, 255)',
+        'network_adapters': 'rgb(255, 159, 64)',
+        'psu': 'rgb(201, 203, 207)',
+        'peripherals': 'rgb(255, 99, 255)'
+    };
+    return colors[component] || 'rgb(0, 0, 0)';
+}
+
+// Просмотр конфигурации
+function viewConfig(configId) {
+    fetch(`/api/pcs/${pcId}/history?skip=0&limit=1000`, {
+        credentials: 'include'
+    })
+    .then(r => r.json())
+    .then(data => {
+        const config = data.items.find(c => c.id === configId);
+        if (!config) return;
+        
+        const modal = new bootstrap.Modal(document.getElementById('configModal'));
+        document.getElementById('modal-timestamp').textContent = new Date(config.timestamp).toLocaleString('ru-RU');
+        document.getElementById('modal-config-content').innerHTML = formatConfigForModal(config);
+        modal.show();
+    });
+}
+
+function formatConfigForModal(config) {
+    // Используем функцию formatConfig из pc_detail.html, но упрощенную версию
+    let html = '<div class="row">';
+    
+    // Проходим по всем компонентам
+    const components = [
+        { key: 'motherboard', name: 'Материнская плата' },
+        { key: 'cpu', name: 'Процессор' },
+        { key: 'ram_modules', name: 'RAM' },
+        { key: 'storage_devices', name: 'Накопители' },
+        { key: 'gpu', name: 'Видеокарта' },
+        { key: 'network_adapters', name: 'Сетевые адаптеры' },
+        { key: 'psu', name: 'Блок питания' },
+        { key: 'peripherals', name: 'Периферия' },
+        { key: 'system_info', name: 'Системная информация' }
+    ];
+    
+    components.forEach(comp => {
+        const data = config[comp.key];
+        if (data && (Array.isArray(data) ? data.length > 0 : true)) {
+            html += `<div class="col-md-6 mb-3">`;
+            html += `<h6>${comp.name}</h6>`;
+            html += `<pre class="bg-light p-2 rounded"><code>${JSON.stringify(data, null, 2)}</code></pre>`;
+            html += `</div>`;
+        }
+    });
+    
+    html += '</div>';
+    return html;
+}
+
+// Применение фильтров
+function applyFilters() {
+    currentFilters.component = document.getElementById('filter-component').value;
+    currentFilters.dateFrom = document.getElementById('filter-date-from').value;
+    currentFilters.dateTo = document.getElementById('filter-date-to').value;
+    // TODO: Реализовать фильтрацию на сервере
+    loadHistory(1);
+}
+
+// Экспорт истории
+function exportHistory() {
+    // TODO: Реализовать экспорт
+    alert('Экспорт будет реализован позже');
+}
+
+// Загрузка при инициализации
+loadHistory(1);
+</script>
+{% endblock %}
+

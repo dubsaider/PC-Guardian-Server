@@ -17,7 +17,56 @@
                 {% elif pc.status == 'offline' %}❌ Нет связи
                 {% else %}❓ Неизвестно{% endif %}
             </span>
+            <span id="agent-version" class="ms-3 text-muted"></span>
         </p>
+    </div>
+</div>
+
+<!-- Локация -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-geo-alt"></i> Локация</h5>
+                {% if user.role == 'admin' %}
+                <button class="btn btn-sm btn-outline-primary" onclick="toggleLocationEdit()">
+                    <i class="bi bi-pencil"></i> Редактировать
+                </button>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div id="location-display">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-3">Локация:</dt>
+                        <dd class="col-sm-9" id="location-value">-</dd>
+                        <dt class="col-sm-3">Корпус:</dt>
+                        <dd class="col-sm-9" id="building-value">-</dd>
+                        <dt class="col-sm-3">Этаж:</dt>
+                        <dd class="col-sm-9" id="floor-value">-</dd>
+                    </dl>
+                </div>
+                <div id="location-edit" style="display: none;">
+                    <form id="location-form" onsubmit="saveLocation(event)">
+                        <div class="mb-3">
+                            <label for="location-input" class="form-label">Локация (аудитория или зона)</label>
+                            <input type="text" class="form-control" id="location-input" 
+                                   placeholder="Например: D752 или площадка ICPC">
+                            <small class="form-text text-muted">
+                                Для аудиторий типа D752 корпус и этаж определятся автоматически
+                            </small>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Сохранить
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="cancelLocationEdit()">
+                                <i class="bi bi-x-circle"></i> Отмена
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -46,14 +95,32 @@
 
 <div class="row">
     <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Системная информация</h5>
+            </div>
+            <div class="card-body" id="system-info">
+                <p class="text-muted">Загрузка...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">История изменений</h5>
-                {% if user.role == 'admin' %}
-                <button class="btn btn-sm btn-primary" onclick="setBaseline()">
-                    <i class="bi bi-check-circle"></i> Установить текущую как эталонную
-                </button>
-                {% endif %}
+                <div>
+                    <a href="/pc/{{ pc.pc_id }}/history" class="btn btn-sm btn-outline-info me-2">
+                        <i class="bi bi-clock-history"></i> Полная история
+                    </a>
+                    {% if user.role == 'admin' %}
+                    <button class="btn btn-sm btn-primary" onclick="setBaseline()">
+                        <i class="bi bi-check-circle"></i> Установить текущую как эталонную
+                    </button>
+                    {% endif %}
+                </div>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -81,6 +148,9 @@
 
 {% block scripts %}
 <script>
+let baselineConfig = null;
+let currentConfig = null;
+
 function loadPCData() {
     fetch(`/api/pcs/{{ pc.pc_id }}`, {
         credentials: 'include'
@@ -94,189 +164,730 @@ function loadPCData() {
     })
     .then(data => {
         if (!data) return;
-        // Эталонная конфигурация
-        const baseline = data.baseline_config;
-        if (baseline) {
-            document.getElementById('baseline-config').innerHTML = formatConfig(baseline);
+        
+        // Версия агента
+        const agentVersion = data.latest_config?.agent_version || data.baseline_config?.agent_version;
+        if (agentVersion) {
+            document.getElementById('agent-version').textContent = `Версия агента: ${agentVersion}`;
+        }
+        
+        // Локация
+        document.getElementById('location-value').textContent = data.location || '-';
+        document.getElementById('building-value').textContent = data.building || '-';
+        document.getElementById('floor-value').textContent = data.floor || '-';
+        
+        // Сохраняем конфигурации для сравнения
+        baselineConfig = data.baseline_config;
+        currentConfig = data.latest_config;
+        
+        // Эталонная конфигурация (с подсветкой удаленных/измененных элементов)
+        if (baselineConfig) {
+            document.getElementById('baseline-config').innerHTML = formatConfig(baselineConfig, currentConfig, 'baseline');
         } else {
             document.getElementById('baseline-config').innerHTML = '<p class="text-muted">Нет данных</p>';
         }
         
-        // Текущая конфигурация
-        const current = data.latest_config;
-        if (current) {
-            document.getElementById('current-config').innerHTML = formatConfig(current);
+        // Текущая конфигурация (с подсветкой добавленных/измененных элементов)
+        if (currentConfig) {
+            document.getElementById('current-config').innerHTML = formatConfig(currentConfig, baselineConfig, 'current');
         } else {
             document.getElementById('current-config').innerHTML = '<p class="text-muted">Нет данных</p>';
+        }
+        
+        // Системная информация (показываем из текущей конфигурации или эталонной)
+        const systemInfo = currentConfig?.system_info || baselineConfig?.system_info;
+        if (systemInfo) {
+            document.getElementById('system-info').innerHTML = formatSystemInfo(systemInfo);
+        } else {
+            document.getElementById('system-info').innerHTML = '<p class="text-muted">Нет данных</p>';
         }
     });
 }
 
-function formatConfig(config) {
+function formatSystemInfo(systemInfo) {
+    let html = '<div class="row">';
+    
+    // Левая колонка
+    html += '<div class="col-md-6">';
+    html += '<dl class="row">';
+    
+    // Информация о системе
+    if (systemInfo.manufacturer || systemInfo.model) {
+        html += '<dt class="col-sm-5">Система:</dt>';
+        html += '<dd class="col-sm-7">';
+        if (systemInfo.manufacturer && systemInfo.model) {
+            html += `${systemInfo.manufacturer} ${systemInfo.model}`;
+        } else if (systemInfo.manufacturer) {
+            html += systemInfo.manufacturer;
+        } else if (systemInfo.model) {
+            html += systemInfo.model;
+        }
+        html += '</dd>';
+    }
+    
+    if (systemInfo.system_type) {
+        html += '<dt class="col-sm-5">Тип системы:</dt>';
+        html += `<dd class="col-sm-7">${systemInfo.system_type}</dd>`;
+    }
+    
+    if (systemInfo.total_physical_memory_gb) {
+        html += '<dt class="col-sm-5">Физическая память:</dt>';
+        html += `<dd class="col-sm-7"><strong>${systemInfo.total_physical_memory_gb} GB</strong></dd>`;
+    }
+    
+    // Операционная система
+    if (systemInfo.os_name) {
+        html += '<dt class="col-sm-5">ОС:</dt>';
+        html += '<dd class="col-sm-7">';
+        html += systemInfo.os_name;
+        if (systemInfo.os_version) {
+            html += ` ${systemInfo.os_version}`;
+        }
+        if (systemInfo.os_build) {
+            html += ` (Build ${systemInfo.os_build})`;
+        }
+        html += '</dd>';
+    }
+    
+    if (systemInfo.os_architecture) {
+        html += '<dt class="col-sm-5">Архитектура:</dt>';
+        html += `<dd class="col-sm-7">${systemInfo.os_architecture}</dd>`;
+    }
+    
+    if (systemInfo.os_install_date) {
+        html += '<dt class="col-sm-5">Дата установки ОС:</dt>';
+        html += `<dd class="col-sm-7">${systemInfo.os_install_date}</dd>`;
+    }
+    
+    html += '</dl>';
+    html += '</div>';
+    
+    // Правая колонка
+    html += '<div class="col-md-6">';
+    html += '<dl class="row">';
+    
+    // Информация о домене
+    if (systemInfo.part_of_domain !== null && systemInfo.part_of_domain !== undefined) {
+        html += '<dt class="col-sm-5">В домене:</dt>';
+        html += `<dd class="col-sm-7">${systemInfo.part_of_domain ? 'Да' : 'Нет'}</dd>`;
+    }
+    
+    if (systemInfo.domain) {
+        html += '<dt class="col-sm-5">Домен:</dt>';
+        html += `<dd class="col-sm-7"><strong>${systemInfo.domain}</strong></dd>`;
+    }
+    
+    if (systemInfo.domain_role) {
+        html += '<dt class="col-sm-5">Роль в домене:</dt>';
+        html += `<dd class="col-sm-7">${systemInfo.domain_role}</dd>`;
+    }
+    
+    if (systemInfo.workgroup && !systemInfo.part_of_domain) {
+        html += '<dt class="col-sm-5">Рабочая группа:</dt>';
+        html += `<dd class="col-sm-7">${systemInfo.workgroup}</dd>`;
+    }
+    
+    // Пользователь и время
+    if (systemInfo.logged_in_user) {
+        html += '<dt class="col-sm-5">Текущий пользователь:</dt>';
+        html += `<dd class="col-sm-7"><strong>${systemInfo.logged_in_user}</strong></dd>`;
+    }
+    
+    if (systemInfo.timezone) {
+        html += '<dt class="col-sm-5">Часовой пояс:</dt>';
+        html += `<dd class="col-sm-7">${systemInfo.timezone}</dd>`;
+    }
+    
+    html += '</dl>';
+    html += '</div>';
+    
+    html += '</div>';
+    return html;
+}
+
+// Вспомогательные функции для сравнения
+function deepEqual(a, b) {
+    if (a === b) return true;
+    if (a == null || b == null) return false;
+    if (typeof a !== typeof b) return false;
+    if (typeof a !== 'object') return a === b;
+    
+    if (Array.isArray(a) !== Array.isArray(b)) return false;
+    
+    if (Array.isArray(a)) {
+        if (a.length !== b.length) return false;
+        return a.every((item, index) => deepEqual(item, b[index]));
+    }
+    
+    const keysA = Object.keys(a).sort();
+    const keysB = Object.keys(b).sort();
+    if (keysA.length !== keysB.length) return false;
+    
+    return keysA.every(key => deepEqual(a[key], b[key]));
+}
+
+function getDiffClass(current, baseline, mode) {
+    if (!baseline) {
+        return mode === 'current' ? 'diff-added' : '';
+    }
+    
+    const isEqual = deepEqual(current, baseline);
+    if (isEqual) return '';
+    
+    if (mode === 'current') {
+        // В текущей конфигурации подсвечиваем измененные/добавленные
+        return baseline ? 'diff-changed' : 'diff-added';
+    } else {
+        // В эталонной подсвечиваем удаленные/измененные
+        return current ? 'diff-changed' : 'diff-removed';
+    }
+}
+
+function getArrayDiffClass(currentArray, baselineArray, mode) {
+    if (!baselineArray || baselineArray.length === 0) {
+        return mode === 'current' ? 'diff-section-added' : 'diff-section-removed';
+    }
+    
+    if (!currentArray || currentArray.length === 0) {
+        return mode === 'current' ? 'diff-section-removed' : 'diff-section-removed';
+    }
+    
+    const isEqual = deepEqual(currentArray, baselineArray);
+    if (!isEqual) {
+        return 'diff-section-changed';
+    }
+    
+    return '';
+}
+
+function formatValue(value, compareValue, mode) {
+    if (value == null) return 'N/A';
+    const hasDiff = compareValue != null && value !== compareValue;
+    if (hasDiff && mode === 'current') {
+        return `<span class="diff-changed">${value}</span>`;
+    } else if (hasDiff && mode === 'baseline') {
+        return `<span class="diff-changed">${value}</span> <span class="diff-removed">(${compareValue})</span>`;
+    }
+    return value;
+}
+
+function formatConfig(config, compareConfig, mode = 'current') {
+    const isBaseline = mode === 'baseline';
     let html = '<dl class="row">';
     
     // Материнская плата
-    if (config.motherboard) {
-        const mb = config.motherboard;
+    const baselineMB = compareConfig?.motherboard;
+    if (config.motherboard || baselineMB) {
+        const mb = config.motherboard || {};
+        const compareMB = baselineMB || {};
+        const diffClass = getDiffClass(mb, compareMB, mode);
+        
         html += '<dt class="col-sm-4">Материнская плата:</dt>';
-        html += '<dd class="col-sm-8">';
-        if (mb.manufacturer && mb.product) {
-            html += `${mb.manufacturer} ${mb.product}`;
-        } else if (mb.model) {
-            html += mb.model;
+        html += `<dd class="col-sm-8 ${diffClass}">`;
+        
+        if (!config.motherboard && baselineMB) {
+            // Удалена в текущей
+            const compareText = compareMB.manufacturer && compareMB.product 
+                ? `${compareMB.manufacturer} ${compareMB.product}` 
+                : (compareMB.model || 'N/A');
+            html += `<span class="diff-removed">${compareText}</span>`;
         } else {
-            html += 'N/A';
+            const text = mb.manufacturer && mb.product 
+                ? `${mb.manufacturer} ${mb.product}` 
+                : (mb.model || 'N/A');
+            const compareText = compareMB.manufacturer && compareMB.product 
+                ? `${compareMB.manufacturer} ${compareMB.product}` 
+                : (compareMB.model || 'N/A');
+            
+            if (text !== compareText && compareMB) {
+                if (mode === 'current') {
+                    html += `<span class="diff-changed">${text}</span>`;
+                } else {
+                    html += `${text} <span class="diff-removed">(${compareText})</span>`;
+                }
+            } else {
+                html += text;
+            }
         }
         html += '</dd>';
     }
     
     // Процессор
-    if (config.cpu) {
-        const cpu = config.cpu;
+    const baselineCPU = compareConfig?.cpu;
+    if (config.cpu || baselineCPU) {
+        const cpu = config.cpu || {};
+        const compareCPU = baselineCPU || {};
+        const diffClass = getDiffClass(cpu, compareCPU, mode);
+        
         html += '<dt class="col-sm-4">Процессор:</dt>';
-        html += '<dd class="col-sm-8">';
-        if (cpu.name) {
-            html += cpu.name;
-        } else if (cpu.model) {
-            html += cpu.model;
+        html += `<dd class="col-sm-8 ${diffClass}">`;
+        
+        if (!config.cpu && baselineCPU) {
+            const compareText = compareCPU.name || compareCPU.model || 'N/A';
+            html += `<span class="diff-removed">${compareText}</span>`;
         } else {
-            html += 'N/A';
-        }
-        if (cpu.cores && cpu.threads) {
-            html += ` (${cpu.cores} ядер / ${cpu.threads} потоков)`;
+            const text = cpu.name || cpu.model || 'N/A';
+            const compareText = compareCPU.name || compareCPU.model || 'N/A';
+            
+            if (text !== compareText && compareCPU) {
+                if (mode === 'current') {
+                    html += `<span class="diff-changed">${text}</span>`;
+                } else {
+                    html += `${text} <span class="diff-removed">(было: ${compareText})</span>`;
+                }
+            } else {
+                html += text;
+            }
+            
+            if (cpu.cores && cpu.threads) {
+                const coresInfo = `${cpu.cores} ядер / ${cpu.threads} потоков`;
+                const compareCoresInfo = compareCPU.cores && compareCPU.threads 
+                    ? `${compareCPU.cores} ядер / ${compareCPU.threads} потоков` 
+                    : '';
+                
+                if (coresInfo !== compareCoresInfo && compareCoresInfo) {
+                    if (mode === 'current') {
+                        html += ` <span class="diff-changed">(${coresInfo})</span>`;
+                    } else {
+                        html += ` (${coresInfo})`;
+                    }
+                } else {
+                    html += ` (${coresInfo})`;
+                }
+            }
         }
         html += '</dd>';
     }
     
     // Оперативная память
-    if (config.ram_modules && config.ram_modules.length > 0) {
+    const baselineRAM = compareConfig?.ram_modules || [];
+    const currentRAM = config.ram_modules || [];
+    if (currentRAM.length > 0 || baselineRAM.length > 0) {
+        const diffClass = getArrayDiffClass(currentRAM, baselineRAM, mode);
+        
         html += '<dt class="col-sm-4">Оперативная память:</dt>';
-        html += '<dd class="col-sm-8">';
+        html += `<dd class="col-sm-8 ${diffClass}">`;
         
-        // Подсчитываем общий объем
-        const totalRAM = config.ram_modules.reduce((sum, module) => {
-            return sum + (module.size_gb || 0);
-        }, 0);
-        
-        if (totalRAM > 0) {
-            html += `<strong>${totalRAM} GB</strong>`;
+        if (currentRAM.length > 0) {
+            const totalRAM = currentRAM.reduce((sum, module) => {
+                return sum + (module.size_gb || 0);
+            }, 0);
+            
+            const baselineTotalRAM = baselineRAM.reduce((sum, module) => {
+                return sum + (module.size_gb || 0);
+            }, 0);
+            
+            if (totalRAM > 0) {
+                if (totalRAM !== baselineTotalRAM && baselineTotalRAM > 0) {
+                    html += `<strong class="diff-changed">${totalRAM} GB</strong>`;
+                } else {
+                    html += `<strong>${totalRAM} GB</strong>`;
+                }
+            }
+            
+            const countChanged = currentRAM.length !== baselineRAM.length;
+            if (countChanged && baselineRAM.length > 0) {
+                html += ` <span class="diff-changed">(${currentRAM.length} модул${currentRAM.length > 1 ? 'ей' : 'ь'})</span>`;
+            } else {
+                html += ` (${currentRAM.length} модул${currentRAM.length > 1 ? 'ей' : 'ь'})`;
+            }
+            
+            html += '<ul class="list-unstyled mt-2 mb-0">';
+            currentRAM.forEach((module, index) => {
+                html += '<li class="small text-muted">';
+                html += `Модуль ${index + 1}: `;
+                if (module.size_gb) {
+                    html += `${module.size_gb} GB`;
+                }
+                if (module.speed) {
+                    html += ` @ ${module.speed}`;
+                }
+                if (module.model) {
+                    html += ` (${module.model})`;
+                }
+                html += '</li>';
+            });
+            html += '</ul>';
+        } else if (baselineRAM.length > 0) {
+            html += '<span class="diff-removed">Удалено</span>';
         }
-        
-        html += ` (${config.ram_modules.length} модул${config.ram_modules.length > 1 ? 'ей' : 'ь'})`;
-        
-        // Детали по каждому модулю
-        html += '<ul class="list-unstyled mt-2 mb-0">';
-        config.ram_modules.forEach((module, index) => {
-            html += '<li class="small text-muted">';
-            html += `Модуль ${index + 1}: `;
-            if (module.size_gb) {
-                html += `${module.size_gb} GB`;
-            }
-            if (module.speed) {
-                html += ` @ ${module.speed}`;
-            }
-            if (module.model) {
-                html += ` (${module.model})`;
-            }
-            html += '</li>';
-        });
-        html += '</ul>';
         
         html += '</dd>';
     }
     
     // Накопители
-    if (config.storage_devices && config.storage_devices.length > 0) {
+    const baselineStorage = compareConfig?.storage_devices || [];
+    const currentStorage = config.storage_devices || [];
+    if (currentStorage.length > 0 || baselineStorage.length > 0) {
+        const diffClass = getArrayDiffClass(currentStorage, baselineStorage, mode);
+        
         html += '<dt class="col-sm-4">Накопители:</dt>';
-        html += '<dd class="col-sm-8">';
+        html += `<dd class="col-sm-8 ${diffClass}">`;
         
-        // Подсчитываем общий объем
-        const totalStorage = config.storage_devices.reduce((sum, device) => {
-            return sum + (device.size_gb || 0);
-        }, 0);
-        
-        if (totalStorage > 0) {
-            html += `<strong>${totalStorage} GB</strong>`;
+        if (currentStorage.length > 0) {
+            const totalStorage = currentStorage.reduce((sum, device) => {
+                return sum + (device.size_gb || 0);
+            }, 0);
+            
+            const baselineTotalStorage = baselineStorage.reduce((sum, device) => {
+                return sum + (device.size_gb || 0);
+            }, 0);
+            
+            if (totalStorage > 0) {
+                if (totalStorage !== baselineTotalStorage && baselineTotalStorage > 0) {
+                    html += `<strong class="diff-changed">${totalStorage} GB</strong>`;
+                } else {
+                    html += `<strong>${totalStorage} GB</strong>`;
+                }
+            }
+            
+            const countChanged = currentStorage.length !== baselineStorage.length;
+            if (countChanged && baselineStorage.length > 0) {
+                html += ` <span class="diff-changed">(${currentStorage.length} устройств${currentStorage.length > 1 ? '' : 'о'})</span>`;
+            } else {
+                html += ` (${currentStorage.length} устройств${currentStorage.length > 1 ? '' : 'о'})`;
+            }
+            
+            html += '<ul class="list-unstyled mt-2 mb-0">';
+            currentStorage.forEach((device, index) => {
+                html += '<li class="small text-muted">';
+                html += `Диск ${index + 1}: `;
+                if (device.size_gb) {
+                    html += `${device.size_gb} GB`;
+                }
+                if (device.type) {
+                    html += ` (${device.type})`;
+                }
+                if (device.interface) {
+                    html += ` ${device.interface}`;
+                }
+                if (device.model) {
+                    html += ` - ${device.model}`;
+                }
+                html += '</li>';
+            });
+            html += '</ul>';
+        } else if (baselineStorage.length > 0) {
+            html += '<span class="diff-removed">Удалено</span>';
         }
-        
-        html += ` (${config.storage_devices.length} устройств${config.storage_devices.length > 1 ? '' : 'о'})`;
-        
-        // Детали по каждому накопителю
-        html += '<ul class="list-unstyled mt-2 mb-0">';
-        config.storage_devices.forEach((device, index) => {
-            html += '<li class="small text-muted">';
-            html += `Диск ${index + 1}: `;
-            if (device.size_gb) {
-                html += `${device.size_gb} GB`;
-            }
-            if (device.type) {
-                html += ` (${device.type})`;
-            }
-            if (device.interface) {
-                html += ` ${device.interface}`;
-            }
-            if (device.model) {
-                html += ` - ${device.model}`;
-            }
-            html += '</li>';
-        });
-        html += '</ul>';
         
         html += '</dd>';
     }
     
     // Видеокарта
-    if (config.gpu) {
-        const gpu = config.gpu;
+    const baselineGPU = compareConfig?.gpu;
+    if (config.gpu || baselineGPU) {
+        const gpu = config.gpu || {};
+        const compareGPU = baselineGPU || {};
+        const diffClass = getDiffClass(gpu, compareGPU, mode);
+        
         html += '<dt class="col-sm-4">Видеокарта:</dt>';
-        html += '<dd class="col-sm-8">';
-        if (gpu.name) {
-            html += gpu.name;
-        } else if (gpu.model) {
-            html += gpu.model;
+        html += `<dd class="col-sm-8 ${diffClass}">`;
+        
+        if (!config.gpu && baselineGPU) {
+            const compareText = compareGPU.name || compareGPU.model || 'N/A';
+            html += `<span class="diff-removed">${compareText}</span>`;
         } else {
-            html += 'N/A';
-        }
-        if (gpu.memory_gb) {
-            html += ` (${gpu.memory_gb} GB)`;
+            const text = gpu.name || gpu.model || 'N/A';
+            const compareText = compareGPU.name || compareGPU.model || 'N/A';
+            
+            if (text !== compareText && compareGPU) {
+                if (mode === 'current') {
+                    html += `<span class="diff-changed">${text}</span>`;
+                } else {
+                    html += `${text} <span class="diff-removed">(было: ${compareText})</span>`;
+                }
+            } else {
+                html += text;
+            }
+            
+            if (gpu.memory_gb && gpu.memory_gb > 0) {
+                const memInfo = `${gpu.memory_gb} GB`;
+                if (gpu.memory_gb !== compareGPU?.memory_gb && compareGPU?.memory_gb && compareGPU.memory_gb > 0) {
+                    if (mode === 'current') {
+                        html += ` <span class="diff-changed">(${memInfo})</span>`;
+                    } else {
+                        html += ` (${memInfo})`;
+                    }
+                } else {
+                    html += ` (${memInfo})`;
+                }
+            }
         }
         html += '</dd>';
     }
     
     // Сетевые адаптеры
-    if (config.network_adapters && config.network_adapters.length > 0) {
+    const baselineNetwork = compareConfig?.network_adapters || [];
+    const currentNetwork = config.network_adapters || [];
+    if (currentNetwork.length > 0 || baselineNetwork.length > 0) {
+        const diffClass = getArrayDiffClass(currentNetwork, baselineNetwork, mode);
+        
         html += '<dt class="col-sm-4">Сетевые адаптеры:</dt>';
-        html += '<dd class="col-sm-8">';
+        html += `<dd class="col-sm-8 ${diffClass}">`;
         html += `<ul class="list-unstyled mb-0">`;
-        config.network_adapters.forEach(adapter => {
-            html += '<li class="small">';
+        currentNetwork.forEach(adapter => {
+            html += '<li class="mb-3">';
+            
+            // Название адаптера
             if (adapter.name) {
-                html += adapter.name;
+                html += `<strong>${adapter.name}</strong>`;
             } else {
-                html += 'Сетевой адаптер';
+                html += '<strong>Сетевой адаптер</strong>';
             }
+            
+            // MAC-адрес
             if (adapter.mac_address) {
                 html += ` <span class="text-muted">(${adapter.mac_address})</span>`;
             }
+            
+            // Производитель
+            if (adapter.manufacturer) {
+                html += ` <span class="text-muted">- ${adapter.manufacturer}</span>`;
+            }
+            
+            html += '<ul class="list-unstyled mt-1 ms-3 small">';
+            
+            // IP-адреса (разделяем IPv4 и IPv6)
+            if (adapter.ip_addresses && adapter.ip_addresses.length > 0) {
+                const ipv4 = adapter.ip_addresses.filter(ip => !ip.includes(':'));
+                const ipv6 = adapter.ip_addresses.filter(ip => ip.includes(':'));
+                
+                if (ipv4.length > 0) {
+                    html += '<li class="text-success">';
+                    html += '<strong>IPv4:</strong> ';
+                    html += ipv4.join(', ');
+                    html += '</li>';
+                }
+                
+                if (ipv6.length > 0) {
+                    html += '<li class="text-muted">';
+                    html += '<strong>IPv6:</strong> ';
+                    html += ipv6.join(', ');
+                    html += '</li>';
+                }
+            }
+            
+            // Подсети (только для IPv4)
+            if (adapter.subnets && adapter.subnets.length > 0) {
+                const ipv4Subnets = adapter.subnets.filter(subnet => !subnet.includes(':') && subnet !== '64');
+                if (ipv4Subnets.length > 0) {
+                    html += '<li class="text-info">';
+                    html += '<strong>Маска:</strong> ';
+                    html += ipv4Subnets.join(', ');
+                    html += '</li>';
+                }
+            }
+            
+            // Шлюзы (только IPv4)
+            if (adapter.gateways && adapter.gateways.length > 0) {
+                const ipv4Gateways = adapter.gateways.filter(gw => !gw.includes(':'));
+                if (ipv4Gateways.length > 0) {
+                    html += '<li class="text-warning">';
+                    html += '<strong>Шлюз:</strong> ';
+                    html += ipv4Gateways.join(', ');
+                    html += '</li>';
+                }
+            }
+            
+            // DNS-серверы
+            if (adapter.dns_servers && adapter.dns_servers.length > 0) {
+                html += '<li class="text-primary">';
+                html += '<strong>DNS:</strong> ';
+                html += adapter.dns_servers.join(', ');
+                html += '</li>';
+            }
+            
+            html += '</ul>';
             html += '</li>';
         });
+        
+        if (currentNetwork.length === 0 && baselineNetwork.length > 0) {
+            html += '<li class="diff-removed">Удалено</li>';
+        }
+        
         html += '</ul>';
         html += '</dd>';
     }
     
     // Блок питания
-    if (config.psu) {
-        const psu = config.psu;
+    const baselinePSU = compareConfig?.psu;
+    if (config.psu || baselinePSU) {
+        const psu = config.psu || {};
+        const comparePSU = baselinePSU || {};
+        const diffClass = getDiffClass(psu, comparePSU, mode);
+        
         html += '<dt class="col-sm-4">Блок питания:</dt>';
-        html += '<dd class="col-sm-8">';
-        if (psu.model) {
-            html += psu.model;
+        html += `<dd class="col-sm-8 ${diffClass}">`;
+        
+        if (!config.psu && baselinePSU) {
+            const compareText = comparePSU.model || 'N/A';
+            html += `<span class="diff-removed">${compareText}</span>`;
         } else {
-            html += 'N/A';
+            const text = psu.model || 'N/A';
+            const compareText = comparePSU.model || 'N/A';
+            
+            if (text !== compareText && comparePSU) {
+                if (mode === 'current') {
+                    html += `<span class="diff-changed">${text}</span>`;
+                } else {
+                    html += `${text} <span class="diff-removed">(было: ${compareText})</span>`;
+                }
+            } else {
+                html += text;
+            }
+            
+            if (psu.wattage) {
+                const wattInfo = `${psu.wattage} W`;
+                if (psu.wattage !== comparePSU?.wattage && comparePSU?.wattage) {
+                    if (mode === 'current') {
+                        html += ` <span class="diff-changed text-muted">(${wattInfo})</span>`;
+                    } else {
+                        html += ` <span class="text-muted">(${wattInfo})</span>`;
+                    }
+                } else {
+                    html += ` <span class="text-muted">(${wattInfo})</span>`;
+                }
+            }
         }
-        if (psu.wattage) {
-            html += ` <span class="text-muted">(${psu.wattage} W)</span>`;
+        html += '</dd>';
+    }
+    
+    // Периферийные устройства
+    const baselinePeripherals = compareConfig?.peripherals || [];
+    const currentPeripherals = config.peripherals || [];
+    if (currentPeripherals.length > 0 || baselinePeripherals.length > 0) {
+        const diffClass = getArrayDiffClass(currentPeripherals, baselinePeripherals, mode);
+        
+        html += '<dt class="col-sm-4">Периферийные устройства:</dt>';
+        html += `<dd class="col-sm-8 ${diffClass}">`;
+        html += `<ul class="list-unstyled mb-0">`;
+        
+        // Группируем по категориям
+        const categories = {
+            'monitor': 'Монитор',
+            'keyboard': 'Клавиатура',
+            'mouse': 'Мышь',
+            'printer': 'Принтер',
+            'camera': 'Камера',
+            'audio': 'Аудио',
+            'speaker': 'Динамики',
+            'other': 'Другое'
+        };
+        
+        if (currentPeripherals.length > 0) {
+            // Функция для фильтрации системных устройств
+            const isSystemDevice = (peripheral) => {
+                const name = (peripheral.name || '').toLowerCase();
+                const desc = (peripheral.description || '').toLowerCase();
+                const systemKeywords = [
+                    'usb-концентратор', 'usb концентратор', 'root hub', 'host controller',
+                    'hid-совместимое устройство', 'hid-совместимый', 'универсальный хост-контроллер',
+                    'xHCI', 'системный контроллер', 'usb-устройство ввода', 'составное usb устройство',
+                    'устройство ввода', 'стандартный usb хост-контроллер'
+                ];
+                return systemKeywords.some(keyword => name.includes(keyword) || desc.includes(keyword));
+            };
+            
+            // Фильтруем системные устройства
+            const filteredPeripherals = currentPeripherals.filter(p => !isSystemDevice(p));
+            
+            // Группируем только по категориям (не объединяем одинаковые устройства - они могут быть реальными дубликатами)
+            const byCategory = {};
+            filteredPeripherals.forEach(peripheral => {
+                const category = peripheral.category || 'other';
+                if (!byCategory[category]) {
+                    byCategory[category] = [];
+                }
+                byCategory[category].push({
+                    peripheral: peripheral,
+                    count: 1  // Каждое устройство показываем отдельно
+                });
+            });
+            
+            // Функция для форматирования устройства
+            const formatPeripheralItem = (peripheral, index, total) => {
+                let itemHtml = '<li class="small mb-1">';
+                const categoryName = categories[peripheral.category] || peripheral.category || 'Устройство';
+                
+                // Если есть несколько одинаковых устройств, добавляем номер
+                if (total > 1) {
+                    itemHtml += `<strong>${categoryName} ${index + 1}</strong>: `;
+                } else {
+                    itemHtml += `<strong>${categoryName}</strong>: `;
+                }
+                
+                // Упрощаем имя устройства
+                let displayName = peripheral.name || '';
+                // Убираем технические детали в скобках после названия
+                if (displayName.includes('(')) {
+                    const parts = displayName.split('(');
+                    displayName = parts[0].trim();
+                }
+                
+                // Обрабатываем описание - убираем технические детали
+                let description = peripheral.description || '';
+                if (description) {
+                    // Убираем URL
+                    description = description.replace(/https?:\/\/[^\s|]+/gi, '');
+                    // Убираем информацию о портах и драйверах
+                    description = description.replace(/Port:\s*[^|]+/gi, '');
+                    description = description.replace(/Driver:\s*[^|]+/gi, '');
+                    description = description.replace(/Location:\s*[^|]+/gi, '');
+                    description = description.replace(/\|/g, '').trim();
+                    
+                    // Убираем дублирование
+                    const descLower = description.toLowerCase();
+                    const nameLower = displayName.toLowerCase();
+                    if (descLower && !descLower.includes(nameLower) && !nameLower.includes(descLower) && description.length > 0) {
+                        if (description.length < 100) { // Не показываем слишком длинные описания
+                            displayName += ` - ${description}`;
+                        }
+                    }
+                }
+                
+                if (!displayName) {
+                    displayName = 'Неизвестное устройство';
+                }
+                
+                itemHtml += displayName;
+                
+                if (peripheral.manufacturer && !displayName.includes(peripheral.manufacturer)) {
+                    itemHtml += ` <span class="text-muted">(${peripheral.manufacturer})</span>`;
+                }
+                
+                if (peripheral.connection_type && !['USB', 'Network'].includes(peripheral.connection_type)) {
+                    itemHtml += ` <span class="text-muted">[${peripheral.connection_type}]</span>`;
+                }
+                
+                itemHtml += '</li>';
+                return itemHtml;
+            };
+            
+            // Отображаем по категориям (сначала известные, потом остальные)
+            const categoryOrder = ['monitor', 'keyboard', 'mouse', 'printer', 'camera', 'audio', 'speaker', 'other'];
+            
+            categoryOrder.forEach(category => {
+                if (!byCategory[category]) return;
+                const devices = byCategory[category];
+                devices.forEach(({peripheral}, index) => {
+                    html += formatPeripheralItem(peripheral, index, devices.length);
+                });
+            });
+            
+            // Показываем остальные категории (неизвестные)
+            Object.keys(byCategory).forEach(category => {
+                if (categoryOrder.includes(category)) return; // Уже показали
+                const devices = byCategory[category];
+                devices.forEach(({peripheral}, index) => {
+                    html += formatPeripheralItem(peripheral, index, devices.length);
+                });
+            });
+        } else if (baselinePeripherals.length > 0) {
+            html += '<li class="diff-removed">Удалено</li>';
         }
+        
+        html += '</ul>';
         html += '</dd>';
     }
     
@@ -314,7 +925,8 @@ function loadEvents() {
                 'storage': 'Накопитель',
                 'gpu': 'Видеокарта',
                 'network': 'Сетевой адаптер',
-                'psu': 'Блок питания'
+                'psu': 'Блок питания',
+                'peripherals': 'Периферийное устройство'
             };
             
             const eventTypes = {
@@ -355,6 +967,68 @@ function setBaseline() {
         alert('Эталонная конфигурация обновлена');
         loadPCData();
         loadEvents();
+    })
+    .catch(e => {
+        alert('Ошибка: ' + e.message);
+    });
+}
+
+function toggleLocationEdit() {
+    const display = document.getElementById('location-display');
+    const edit = document.getElementById('location-edit');
+    const locationValue = document.getElementById('location-value').textContent;
+    
+    if (display.style.display === 'none') {
+        display.style.display = 'block';
+        edit.style.display = 'none';
+    } else {
+        display.style.display = 'none';
+        edit.style.display = 'block';
+        document.getElementById('location-input').value = locationValue === '-' ? '' : locationValue;
+        document.getElementById('location-input').focus();
+    }
+}
+
+function cancelLocationEdit() {
+    document.getElementById('location-display').style.display = 'block';
+    document.getElementById('location-edit').style.display = 'none';
+}
+
+function saveLocation(event) {
+    event.preventDefault();
+    
+    const location = document.getElementById('location-input').value.trim();
+    const pcId = '{{ pc.pc_id }}';
+    
+    fetch(`/api/pcs/${pcId}/location`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+            location: location || null
+        })
+    })
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        if (r.status === 403) {
+            alert('Недостаточно прав для редактирования локации');
+            return;
+        }
+        if (!r.ok) {
+            throw new Error('Ошибка сохранения локации');
+        }
+        return r.json();
+    })
+    .then(data => {
+        if (!data) return;
+        // Перезагружаем данные ПК
+        loadPCData();
+        cancelLocationEdit();
     })
     .catch(e => {
         alert('Ошибка: ' + e.message);

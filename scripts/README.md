@@ -33,3 +33,41 @@ python scripts/add_user.py user user@example.com mypassword viewer
 docker-compose exec server python /app/scripts/add_user.py
 ```
 
+## clear_database.py
+
+Скрипт для очистки базы данных от всех данных (сохраняет структуру БД).
+
+**ВНИМАНИЕ:** Удаляет все данные из всех таблиц!
+
+### Использование
+
+**Полная очистка (с подтверждением):**
+```bash
+python scripts/clear_database.py
+```
+
+**Очистка с сохранением пользователей:**
+```bash
+python scripts/clear_database.py --keep-users
+```
+
+**Очистка без подтверждения (для автоматизации):**
+```bash
+python scripts/clear_database.py --confirm
+```
+
+### В Docker контейнере
+
+```bash
+# Полная очистка
+docker-compose exec server python /app/scripts/clear_database.py
+
+# С сохранением пользователей
+docker-compose exec server python /app/scripts/clear_database.py --keep-users
+```
+
+
+
+
+
+

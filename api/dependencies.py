@@ -1,5 +1,6 @@
 """
-Модуль аутентификации для PC-Guardian
+Зависимости для FastAPI (dependency injection)
+Аутентификация и получение текущего пользователя
 """
 import bcrypt
 import os
@@ -10,7 +11,8 @@ from fastapi import Depends, HTTPException, status, Request, Cookie
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
 
-from database import get_db, User
+from infrastructure.database.session import get_db
+from infrastructure.database.models import User
 
 security = HTTPBasic()
 
@@ -19,7 +21,8 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Создать JWT токен"""
     to_encode = data.copy()
     if expires_delta:
@@ -29,6 +32,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
 
 def verify_token(token: str) -> Optional[dict]:
     """Проверить JWT токен"""
@@ -89,19 +93,16 @@ def get_user_from_token(session_token: str, db: Session) -> Optional[User]:
     
     return user
 
-def get_user_from_session(
-    session_token: Optional[str] = Cookie(None, alias="session_token"),
-    db: Session = Depends(get_db)
-) -> Optional[User]:
-    """Получить пользователя из сессии"""
-    return get_user_from_token(session_token, db) if session_token else None
 
 def get_current_user(
     request: Request,
     credentials: Optional[HTTPBasicCredentials] = Depends(HTTPBasic(auto_error=False)),
     db: Session = Depends(get_db)
 ) -> User:
-    """Получить текущего пользователя из сессии или HTTP Basic Auth"""
+    """
+    Получить текущего пользователя из сессии или HTTP Basic Auth
+    Dependency для FastAPI endpoints
+    """
     # Сначала пробуем получить из сессии (cookie)
     session_token = request.cookies.get("session_token")
     if session_token:
@@ -151,7 +152,7 @@ def create_user(
 ) -> User:
     """Создать пользователя"""
     if db is None:
-        from database import SessionLocal
+        from infrastructure.database.session import SessionLocal
         db = SessionLocal()
     
     # Проверяем, существует ли пользователь
@@ -170,4 +171,6 @@ def create_user(
     db.refresh(user)
     
     return user
+
+
 

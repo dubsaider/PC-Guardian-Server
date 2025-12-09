@@ -2,7 +2,8 @@
 Скрипт инициализации базы данных
 """
 import bcrypt
-from database import Base, engine, SessionLocal, User
+from infrastructure.database.session import Base, engine, SessionLocal
+from infrastructure.database.models import User
 
 def get_password_hash(password: str) -> str:
     """Получить хеш пароля через bcrypt"""

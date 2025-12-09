@@ -1,12 +1,13 @@
 """
 Модуль сравнения конфигураций ПК
+Доменная логика сравнения конфигураций
 """
 import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from common.models import ChangeEvent
-from database import PCConfiguration as DBPCConfiguration
+from infrastructure.database.models import PCConfiguration as DBPCConfiguration
 
 
 class ConfigComparator:
@@ -40,6 +41,7 @@ class ConfigComparator:
         events.extend(self._compare_component('gpu', baseline, current))
         events.extend(self._compare_network_adapters(baseline, current))
         events.extend(self._compare_component('psu', baseline, current))
+        events.extend(self._compare_peripherals(baseline, current))
         
         return events
     
@@ -252,6 +254,82 @@ class ConfigComparator:
         
         return events
     
+    def _compare_peripherals(
+        self,
+        baseline: DBPCConfiguration,
+        current: DBPCConfiguration
+    ) -> List[ChangeEvent]:
+        """Сравнить периферийные устройства (могут быть множественные)"""
+        events = []
+        
+        baseline_peripherals = baseline.get_component('peripherals') or []
+        current_peripherals = current.get_component('peripherals') or []
+        
+        # Создаем словари по уникальному идентификатору (category + name + connection_type)
+        def get_peripheral_key(peripheral):
+            """Получить уникальный ключ для периферийного устройства"""
+            parts = [
+                peripheral.get('category', 'unknown'),
+                peripheral.get('name', ''),
+                peripheral.get('connection_type', ''),
+                peripheral.get('manufacturer', '')
+            ]
+            return '|'.join(str(p) for p in parts if p)
+        
+        baseline_dict = {}
+        for peripheral in baseline_peripherals:
+            key = get_peripheral_key(peripheral)
+            baseline_dict[key] = peripheral
+        
+        current_dict = {}
+        for peripheral in current_peripherals:
+            key = get_peripheral_key(peripheral)
+            current_dict[key] = peripheral
+        
+        # Проверяем удаленные устройства
+        for key, peripheral in baseline_dict.items():
+            if key not in current_dict:
+                category_name = peripheral.get('category', 'неизвестно')
+                device_name = peripheral.get('name', 'неизвестно')
+                events.append(ChangeEvent(
+                    pc_id=baseline.pc_id,
+                    component_type='peripherals',
+                    event_type='removed',
+                    old_value=peripheral,
+                    new_value=None,
+                    details=f"Периферийное устройство удалено: {category_name} - {device_name}"
+                ))
+        
+        # Проверяем добавленные устройства
+        for key, peripheral in current_dict.items():
+            if key not in baseline_dict:
+                category_name = peripheral.get('category', 'неизвестно')
+                device_name = peripheral.get('name', 'неизвестно')
+                events.append(ChangeEvent(
+                    pc_id=baseline.pc_id,
+                    component_type='peripherals',
+                    event_type='added',
+                    old_value=None,
+                    new_value=peripheral,
+                    details=f"Периферийное устройство добавлено: {category_name} - {device_name}"
+                ))
+        
+        # Проверяем замененные устройства (если изменились характеристики)
+        for key in baseline_dict.keys() & current_dict.keys():
+            if not self._components_equal(baseline_dict[key], current_dict[key]):
+                category_name = baseline_dict[key].get('category', 'неизвестно')
+                device_name = baseline_dict[key].get('name', 'неизвестно')
+                events.append(ChangeEvent(
+                    pc_id=baseline.pc_id,
+                    component_type='peripherals',
+                    event_type='replaced',
+                    old_value=baseline_dict[key],
+                    new_value=current_dict[key],
+                    details=f"Периферийное устройство изменено: {category_name} - {device_name}"
+                ))
+        
+        return events
+    
     def _components_equal(self, comp1: Dict[str, Any], comp2: Dict[str, Any]) -> bool:
         """Проверить, равны ли два компонента"""
         # Нормализуем словари (убираем None значения для сравнения)
@@ -259,4 +337,6 @@ class ConfigComparator:
             return {k: v for k, v in d.items() if v is not None}
         
         return normalize(comp1) == normalize(comp2)
+
+
 

@@ -11,6 +11,38 @@
         .status-changed { color: #ffc107; }
         .status-offline { color: #dc3545; }
         .status-unknown { color: #6c757d; }
+        
+        /* Подсветка различий в конфигурациях */
+        .diff-added {
+            background-color: #d4edda;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        .diff-removed {
+            background-color: #f8d7da;
+            padding: 2px 4px;
+            border-radius: 3px;
+            text-decoration: line-through;
+            opacity: 0.7;
+        }
+        .diff-changed {
+            background-color: #fff3cd;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        .diff-section-added {
+            border-left: 3px solid #28a745;
+            padding-left: 8px;
+        }
+        .diff-section-removed {
+            border-left: 3px solid #dc3545;
+            padding-left: 8px;
+            opacity: 0.7;
+        }
+        .diff-section-changed {
+            border-left: 3px solid #ffc107;
+            padding-left: 8px;
+        }
     </style>
 </head>
 <body>

@@ -38,6 +38,8 @@ ENV/
 *.sqlite
 *.sqlite3
 data/
+# Keep data directory structure but ignore DB files
+!data/.gitkeep
 
 # Config files with sensitive data
 .env
