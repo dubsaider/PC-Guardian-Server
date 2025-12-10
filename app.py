@@ -79,22 +79,26 @@ from api.routes.auth import router as auth_router
 from api.routes.pcs import router as pcs_router
 from api.routes.events import router as events_router
 from api.routes.stats import router as stats_router
+from api.routes.alert_rules import router as alert_rules_router
 
 app.include_router(auth_router)
 app.include_router(pcs_router)
 app.include_router(events_router)
 app.include_router(stats_router)
+app.include_router(alert_rules_router)
 
 # Web роутеры
 from web.routes.dashboard import router as dashboard_router
 from web.routes.pc_detail import router as pc_detail_router
 from web.routes.events import router as events_web_router
 from web.routes.history import router as history_router
+from web.routes.alert_rules import router as alert_rules_web_router
 
 app.include_router(dashboard_router)
 app.include_router(pc_detail_router)
 app.include_router(events_web_router)
 app.include_router(history_router)
+app.include_router(alert_rules_web_router)
 
 
 if __name__ == "__main__":

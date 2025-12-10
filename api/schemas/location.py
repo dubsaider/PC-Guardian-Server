@@ -21,3 +21,4 @@ class BulkUpdateLocationResponse(BaseModel):
     failed: int
     errors: List[str] = []
 
+

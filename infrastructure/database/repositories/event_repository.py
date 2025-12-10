@@ -117,7 +117,7 @@ class EventRepository:
         query = self._apply_filters(
             query, pc_id, component_type, event_type,
             building, floor, location, date_from, date_to, search
-        )
+            )
         
         # Сортировка
         if sort_by:
@@ -152,7 +152,7 @@ class EventRepository:
         query = self._apply_filters(
             query, pc_id, component_type, event_type,
             building, floor, location, date_from, date_to, search
-        )
+            )
         
         return query.count()
     

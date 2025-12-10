@@ -11,6 +11,7 @@ from infrastructure.database.repositories.pc_repository import PCRepository
 from infrastructure.database.repositories.config_repository import ConfigRepository
 from infrastructure.database.repositories.current_config_repository import CurrentConfigRepository
 from infrastructure.database.repositories.event_repository import EventRepository
+from infrastructure.database.repositories.alert_rule_repository import AlertRuleRepository
 from infrastructure.database.models import PCConfiguration as DBPCConfiguration
 from infrastructure.messaging.notification_service import NotificationService
 
@@ -18,6 +19,7 @@ from core.services.pc_service import PCService
 from core.services.config_service import ConfigService
 from core.services.event_service import EventService
 from core.services.comparison_service import ComparisonService
+from core.services.alert_service import AlertService
 from common.location_parser import update_pc_location
 
 
@@ -54,8 +56,11 @@ class ConfigurationProcessingService:
             config_repo = ConfigRepository(db)
             current_config_repo = CurrentConfigRepository(db)
             event_repo = EventRepository(db)
+            alert_rule_repo = AlertRuleRepository(db)
             
             pc_service = PCService(pc_repo)
+            alert_service = AlertService(alert_rule_repo)
+            notification_service = NotificationService(alert_service)
             
             last_seen_time = config.timestamp if config.timestamp else datetime.utcnow()
             
@@ -134,7 +139,7 @@ class ConfigurationProcessingService:
                     
                     # Отправляем уведомления
                     for domain_event, db_event in zip(domain_events, db_events):
-                        self.notification_service.send_alert(pc, db_event)
+                        notification_service.send_alert(pc, db_event)
                     
                     self.logger.warning(
                         f"Обнаружены изменения на ПК {config.pc_id}: {len(domain_events)} событий"

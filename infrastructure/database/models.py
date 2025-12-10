@@ -4,7 +4,7 @@ SQLAlchemy модели базы данных для системы PC-Guardian
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import json
 
 # Импортируем Base из session для единой точки создания
@@ -154,7 +154,7 @@ class PCConfiguration(Base):
             result[component] = self.get_component(component)
         
         return result
-    
+
     @classmethod
     def from_current_configuration(cls, current: 'PCCurrentConfiguration') -> 'PCConfiguration':
         """Создать конфигурацию истории из текущего состояния (для сравнения)"""
@@ -226,6 +226,72 @@ class ChangeEvent(Base):
             'new_value': self.get_new_value(),
             'notified': self.notified,
             'notified_at': self.notified_at.isoformat() if self.notified_at else None
+        }
+
+
+class AlertRule(Base):
+    """Модель правила уведомлений"""
+    __tablename__ = 'alert_rules'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)  # Название правила
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # Владелец правила (null = глобальное)
+    enabled = Column(Boolean, default=True, nullable=False)  # Включено ли правило
+    
+    # Каналы уведомлений (хранятся как JSON список: ["email", "telegram"])
+    channels = Column(Text, nullable=False, default='["email"]')  # email, telegram
+    
+    # Фильтры (хранятся как JSON)
+    filters = Column(Text, nullable=True)  # JSON с фильтрами
+    
+    # Получатели (хранятся как JSON список email/telegram ID)
+    recipients = Column(Text, nullable=False)  # JSON список получателей
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    def set_channels(self, channels: List[str]):
+        """Установить каналы уведомлений"""
+        self.channels = json.dumps(channels, ensure_ascii=False)
+    
+    def get_channels(self) -> List[str]:
+        """Получить каналы уведомлений"""
+        if self.channels:
+            return json.loads(self.channels)
+        return []
+    
+    def set_filters(self, filters: Optional[Dict[str, Any]]):
+        """Установить фильтры"""
+        self.filters = json.dumps(filters, ensure_ascii=False) if filters else None
+    
+    def get_filters(self) -> Optional[Dict[str, Any]]:
+        """Получить фильтры"""
+        if self.filters:
+            return json.loads(self.filters)
+        return None
+    
+    def set_recipients(self, recipients: List[str]):
+        """Установить получателей"""
+        self.recipients = json.dumps(recipients, ensure_ascii=False)
+    
+    def get_recipients(self) -> List[str]:
+        """Получить получателей"""
+        if self.recipients:
+            return json.loads(self.recipients)
+        return []
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Преобразовать в словарь"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'user_id': self.user_id,
+            'enabled': self.enabled,
+            'channels': self.get_channels(),
+            'filters': self.get_filters(),
+            'recipients': self.get_recipients(),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 

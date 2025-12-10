@@ -1,0 +1,511 @@
+{% extends "base.html" %}
+
+{% block title %}Правила уведомлений - PC-Guardian{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <h1><i class="bi bi-bell"></i> Правила уведомлений</h1>
+        <button class="btn btn-primary" onclick="showCreateModal()">
+            <i class="bi bi-plus-circle"></i> Создать правило
+        </button>
+    </div>
+</div>
+
+<!-- Список правил -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Мои правила</h5>
+            </div>
+            <div class="card-body">
+                <div id="rules-list">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно создания/редактирования -->
+<div class="modal fade" id="ruleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ruleModalTitle">Создать правило</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="ruleForm">
+                    <input type="hidden" id="ruleId" name="id">
+                    
+                    <!-- Основная информация -->
+                    <div class="mb-3">
+                        <label class="form-label">Название правила *</label>
+                        <input type="text" class="form-control" id="ruleName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="ruleEnabled" checked>
+                            <label class="form-check-label" for="ruleEnabled">Включено</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Каналы уведомлений -->
+                    <div class="mb-3">
+                        <label class="form-label">Каналы уведомлений *</label>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="channelEmail" value="email" checked>
+                                <label class="form-check-label" for="channelEmail">Email</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="channelTelegram" value="telegram">
+                                <label class="form-check-label" for="channelTelegram">Telegram</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Получатели -->
+                    <div class="mb-3">
+                        <label class="form-label">Получатели *</label>
+                        <small class="text-muted d-block mb-2">Укажите email адреса или Telegram chat_id (по одному на строку)</small>
+                        <textarea class="form-control" id="ruleRecipients" rows="3" placeholder="user@example.com&#10;123456789" required></textarea>
+                    </div>
+                    
+                    <hr>
+                    <h6>Фильтры (необязательно)</h6>
+                    <small class="text-muted">Если фильтры не указаны, правило будет срабатывать на все события</small>
+                    
+                    <!-- Фильтры по локации -->
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Корпуса</label>
+                            <input type="text" class="form-control" id="filterBuildings" placeholder="D, A, B (через запятую)">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Этажи</label>
+                            <input type="text" class="form-control" id="filterFloors" placeholder="7, 8, 9 (через запятую)">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Локации</label>
+                            <input type="text" class="form-control" id="filterLocations" placeholder="D752, A101 (через запятую)">
+                        </div>
+                    </div>
+                    
+                    <!-- Фильтры по компонентам -->
+                    <div class="mb-3">
+                        <label class="form-label">Типы компонентов</label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <small class="text-muted d-block mb-2">Включить (если не выбрано - все):</small>
+                                <div id="componentTypesInclude">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="comp-motherboard" value="motherboard">
+                                        <label class="form-check-label" for="comp-motherboard">Материнская плата</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="comp-cpu" value="cpu">
+                                        <label class="form-check-label" for="comp-cpu">Процессор</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="comp-ram" value="ram">
+                                        <label class="form-check-label" for="comp-ram">RAM</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="comp-storage" value="storage">
+                                        <label class="form-check-label" for="comp-storage">Накопитель</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="comp-gpu" value="gpu">
+                                        <label class="form-check-label" for="comp-gpu">Видеокарта</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="comp-network" value="network">
+                                        <label class="form-check-label" for="comp-network">Сетевой адаптер</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="comp-psu" value="psu">
+                                        <label class="form-check-label" for="comp-psu">Блок питания</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="comp-peripherals" value="peripherals">
+                                        <label class="form-check-label" for="comp-peripherals">Периферия</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted d-block mb-2">Исключить:</small>
+                                <div id="componentTypesExclude">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="exclude-peripherals" value="peripherals">
+                                        <label class="form-check-label" for="exclude-peripherals">Периферия (клавиатуры/мыши)</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="exclude-network" value="network">
+                                        <label class="form-check-label" for="exclude-network">Сетевые настройки</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Фильтры по типам событий -->
+                    <div class="mb-3">
+                        <label class="form-label">Типы событий</label>
+                        <small class="text-muted d-block mb-2">Если не выбрано - все типы</small>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="event-added" value="added">
+                                <label class="form-check-label" for="event-added">Добавлен</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="event-removed" value="removed">
+                                <label class="form-check-label" for="event-removed">Удален</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="event-replaced" value="replaced">
+                                <label class="form-check-label" for="event-replaced">Заменен</label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveRule()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let rules = [];
+let editingRuleId = null;
+
+// Загрузка правил
+function loadRules() {
+    fetch('/api/alert-rules', {
+        credentials: 'include'
+    })
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        return r.json();
+    })
+    .then(data => {
+        if (!data) return;
+        rules = data.items || [];
+        renderRules();
+    })
+    .catch(err => {
+        console.error('Ошибка загрузки правил:', err);
+        document.getElementById('rules-list').innerHTML = '<div class="alert alert-danger">Ошибка загрузки правил</div>';
+    });
+}
+
+// Отображение правил
+function renderRules() {
+    const container = document.getElementById('rules-list');
+    
+    if (rules.length === 0) {
+        container.innerHTML = '<div class="text-center py-5 text-muted">Нет правил. Создайте первое правило.</div>';
+        return;
+    }
+    
+    let html = '<div class="table-responsive"><table class="table table-hover"><thead><tr>';
+    html += '<th>Название</th>';
+    html += '<th>Статус</th>';
+    html += '<th>Каналы</th>';
+    html += '<th>Получатели</th>';
+    html += '<th>Фильтры</th>';
+    html += '<th>Действия</th>';
+    html += '</tr></thead><tbody>';
+    
+    rules.forEach(rule => {
+        const statusBadge = rule.enabled 
+            ? '<span class="badge bg-success">Включено</span>'
+            : '<span class="badge bg-secondary">Отключено</span>';
+        
+        const channels = rule.channels.map(c => {
+            if (c === 'email') return '<span class="badge bg-primary">Email</span>';
+            if (c === 'telegram') return '<span class="badge bg-info">Telegram</span>';
+            return c;
+        }).join(' ');
+        
+        const recipientsCount = rule.recipients ? rule.recipients.length : 0;
+        const filtersInfo = getFiltersInfo(rule.filters);
+        
+        html += `<tr>
+            <td><strong>${rule.name}</strong></td>
+            <td>${statusBadge}</td>
+            <td>${channels}</td>
+            <td>${recipientsCount} получателей</td>
+            <td><small>${filtersInfo}</small></td>
+            <td>
+                <button class="btn btn-sm btn-primary" onclick="editRule(${rule.id})">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="deleteRule(${rule.id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+}
+
+// Информация о фильтрах
+function getFiltersInfo(filters) {
+    if (!filters) return 'Все события';
+    
+    const parts = [];
+    if (filters.buildings && filters.buildings.length > 0) {
+        parts.push(`Корпуса: ${filters.buildings.join(', ')}`);
+    }
+    if (filters.floors && filters.floors.length > 0) {
+        parts.push(`Этажи: ${filters.floors.join(', ')}`);
+    }
+    if (filters.locations && filters.locations.length > 0) {
+        parts.push(`Локации: ${filters.locations.join(', ')}`);
+    }
+    if (filters.component_types && filters.component_types.length > 0) {
+        parts.push(`Компоненты: ${filters.component_types.length}`);
+    }
+    if (filters.exclude_component_types && filters.exclude_component_types.length > 0) {
+        parts.push(`Исключено: ${filters.exclude_component_types.join(', ')}`);
+    }
+    
+    return parts.length > 0 ? parts.join('; ') : 'Все события';
+}
+
+// Показать модальное окно создания
+function showCreateModal() {
+    editingRuleId = null;
+    document.getElementById('ruleModalTitle').textContent = 'Создать правило';
+    document.getElementById('ruleForm').reset();
+    document.getElementById('ruleId').value = '';
+    document.getElementById('ruleEnabled').checked = true;
+    document.getElementById('channelEmail').checked = true;
+    document.getElementById('channelTelegram').checked = false;
+    
+    // Сброс фильтров
+    document.getElementById('filterBuildings').value = '';
+    document.getElementById('filterFloors').value = '';
+    document.getElementById('filterLocations').value = '';
+    document.querySelectorAll('#componentTypesInclude input[type="checkbox"]').forEach(cb => cb.checked = false);
+    document.querySelectorAll('#componentTypesExclude input[type="checkbox"]').forEach(cb => cb.checked = false);
+    document.querySelectorAll('input[id^="event-"]').forEach(cb => cb.checked = false);
+    
+    new bootstrap.Modal(document.getElementById('ruleModal')).show();
+}
+
+// Редактирование правила
+function editRule(ruleId) {
+    const rule = rules.find(r => r.id === ruleId);
+    if (!rule) return;
+    
+    editingRuleId = ruleId;
+    document.getElementById('ruleModalTitle').textContent = 'Редактировать правило';
+    document.getElementById('ruleId').value = rule.id;
+    document.getElementById('ruleName').value = rule.name;
+    document.getElementById('ruleEnabled').checked = rule.enabled;
+    document.getElementById('ruleRecipients').value = rule.recipients ? rule.recipients.join('\n') : '';
+    
+    // Каналы
+    document.getElementById('channelEmail').checked = rule.channels.includes('email');
+    document.getElementById('channelTelegram').checked = rule.channels.includes('telegram');
+    
+    // Фильтры
+    if (rule.filters) {
+        if (rule.filters.buildings) {
+            document.getElementById('filterBuildings').value = rule.filters.buildings.join(', ');
+        }
+        if (rule.filters.floors) {
+            document.getElementById('filterFloors').value = rule.filters.floors.join(', ');
+        }
+        if (rule.filters.locations) {
+            document.getElementById('filterLocations').value = rule.filters.locations.join(', ');
+        }
+        
+        // Компоненты
+        if (rule.filters.component_types) {
+            rule.filters.component_types.forEach(ct => {
+                const cb = document.getElementById(`comp-${ct}`);
+                if (cb) cb.checked = true;
+            });
+        }
+        
+        if (rule.filters.exclude_component_types) {
+            rule.filters.exclude_component_types.forEach(ct => {
+                const cb = document.getElementById(`exclude-${ct}`);
+                if (cb) cb.checked = true;
+            });
+        }
+        
+        // Типы событий
+        if (rule.filters.event_types) {
+            rule.filters.event_types.forEach(et => {
+                const cb = document.getElementById(`event-${et}`);
+                if (cb) cb.checked = true;
+            });
+        }
+    }
+    
+    new bootstrap.Modal(document.getElementById('ruleModal')).show();
+}
+
+// Сохранение правила
+function saveRule() {
+    const form = document.getElementById('ruleForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+    
+    // Собираем данные
+    const ruleData = {
+        name: document.getElementById('ruleName').value,
+        enabled: document.getElementById('ruleEnabled').checked,
+        channels: [],
+        recipients: document.getElementById('ruleRecipients').value
+            .split('\n')
+            .map(r => r.trim())
+            .filter(r => r.length > 0),
+        filters: {}
+    };
+    
+    // Каналы
+    if (document.getElementById('channelEmail').checked) {
+        ruleData.channels.push('email');
+    }
+    if (document.getElementById('channelTelegram').checked) {
+        ruleData.channels.push('telegram');
+    }
+    
+    // Фильтры
+    const buildings = document.getElementById('filterBuildings').value.trim();
+    if (buildings) {
+        ruleData.filters.buildings = buildings.split(',').map(b => b.trim()).filter(b => b);
+    }
+    
+    const floors = document.getElementById('filterFloors').value.trim();
+    if (floors) {
+        ruleData.filters.floors = floors.split(',').map(f => f.trim()).filter(f => f);
+    }
+    
+    const locations = document.getElementById('filterLocations').value.trim();
+    if (locations) {
+        ruleData.filters.locations = locations.split(',').map(l => l.trim()).filter(l => l);
+    }
+    
+    // Компоненты
+    const componentTypes = [];
+    document.querySelectorAll('#componentTypesInclude input[type="checkbox"]:checked').forEach(cb => {
+        componentTypes.push(cb.value);
+    });
+    if (componentTypes.length > 0) {
+        ruleData.filters.component_types = componentTypes;
+    }
+    
+    const excludeComponentTypes = [];
+    document.querySelectorAll('#componentTypesExclude input[type="checkbox"]:checked').forEach(cb => {
+        excludeComponentTypes.push(cb.value);
+    });
+    if (excludeComponentTypes.length > 0) {
+        ruleData.filters.exclude_component_types = excludeComponentTypes;
+    }
+    
+    // Типы событий
+    const eventTypes = [];
+    document.querySelectorAll('input[id^="event-"]:checked').forEach(cb => {
+        eventTypes.push(cb.value);
+    });
+    if (eventTypes.length > 0) {
+        ruleData.filters.event_types = eventTypes;
+    }
+    
+    // Если фильтров нет - не отправляем объект filters
+    if (Object.keys(ruleData.filters).length === 0) {
+        ruleData.filters = null;
+    }
+    
+    // Отправка запроса
+    const url = editingRuleId 
+        ? `/api/alert-rules/${editingRuleId}`
+        : '/api/alert-rules';
+    const method = editingRuleId ? 'PATCH' : 'POST';
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify(ruleData)
+    })
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        if (!r.ok) {
+            return r.json().then(err => Promise.reject(err));
+        }
+        return r.json();
+    })
+    .then(data => {
+        bootstrap.Modal.getInstance(document.getElementById('ruleModal')).hide();
+        loadRules();
+    })
+    .catch(err => {
+        alert('Ошибка сохранения правила: ' + (err.detail || err.message || 'Неизвестная ошибка'));
+    });
+}
+
+// Удаление правила
+function deleteRule(ruleId) {
+    if (!confirm('Вы уверены, что хотите удалить это правило?')) {
+        return;
+    }
+    
+    fetch(`/api/alert-rules/${ruleId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+    })
+    .then(r => {
+        if (r.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        if (!r.ok) {
+            return r.json().then(err => Promise.reject(err));
+        }
+        return r.json();
+    })
+    .then(() => {
+        loadRules();
+    })
+    .catch(err => {
+        alert('Ошибка удаления правила: ' + (err.detail || err.message || 'Неизвестная ошибка'));
+    });
+}
+
+// Загрузка при старте
+loadRules();
+</script>
+{% endblock %}
+

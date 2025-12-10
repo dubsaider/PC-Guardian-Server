@@ -86,11 +86,11 @@ services:
       # TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       
       # Email (опционально)
-      # SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
-      # SMTP_PORT: ${SMTP_PORT:-587}
-      # SMTP_USER: ${SMTP_USER:-}
-      # SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      # EMAIL_FROM: ${EMAIL_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.yandex.ru}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: kostenkov.va@dvfu.ru
+      SMTP_PASSWORD: bkmhacksyhcjgzcz
+      EMAIL_FROM: ${EMAIL_FROM:-kostenkov.va@dvfu.ru}
       # EMAIL_TO: ${EMAIL_TO:-}
     volumes:
       - ./data:/app/data
