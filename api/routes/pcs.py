@@ -17,6 +17,7 @@ from api.schemas.pc import PCListResponse, PCDetailResponse, SetBaselineResponse
 from api.schemas.location import UpdateLocationRequest, BulkUpdateLocationRequest, BulkUpdateLocationResponse
 from common.location_parser import update_pc_location
 from core.services.comparison_service import ComparisonService
+from core.config import settings
 
 router = APIRouter(prefix="/api/pcs", tags=["PCs"])
 
@@ -58,7 +59,7 @@ async def get_pcs(
     from common.utils import normalize_search_fields, extract_ip_addresses_from_config
     
     # Обновляем статус offline перед получением списка
-    pc_repo.update_offline_status(offline_threshold_minutes=10)
+    pc_repo.update_offline_status(offline_threshold_minutes=settings.offline_threshold_minutes)
     
     # Нормализуем все поисковые поля (приводим к нижнему регистру для регистронезависимого поиска)
     normalized = normalize_search_fields(building, floor, location, search)
@@ -414,7 +415,7 @@ async def get_pc(
 ):
     """Получить информацию о ПК"""
     # Обновляем статус offline перед получением информации
-    pc_repo.update_offline_status(offline_threshold_minutes=10)
+    pc_repo.update_offline_status(offline_threshold_minutes=settings.offline_threshold_minutes)
     
     pc = pc_repo.find_by_id(pc_id)
     if not pc:

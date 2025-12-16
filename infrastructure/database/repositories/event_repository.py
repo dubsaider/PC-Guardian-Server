@@ -2,15 +2,16 @@
 Репозиторий для работы с событиями изменений
 """
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 from sqlalchemy.orm.query import Query
 from typing import Optional, List
 from datetime import datetime, timedelta
 
 from infrastructure.database.models import ChangeEvent, PC
+from infrastructure.database.repositories.base_repository import BaseRepository
 
 
-class EventRepository:
+class EventRepository(BaseRepository):
     """Репозиторий для работы с событиями изменений"""
     
     def __init__(self, db: Session):
@@ -69,28 +70,15 @@ class EventRepository:
             query = query.filter(ChangeEvent.component_type == component_type)
         if event_type:
             query = query.filter(ChangeEvent.event_type == event_type)
-        if building:
-            # Регистронезависимый поиск по корпусу (building уже нормализован на уровне API)
-            query = query.filter(PC.building.ilike(f"%{building}%"))
-        if floor:
-            # Регистронезависимый поиск по этажу (floor уже нормализован на уровне API)
-            query = query.filter(PC.floor.ilike(f"%{floor}%"))
-        if location:
-            # Регистронезависимый поиск по локации (location уже нормализован на уровне API)
-            query = query.filter(PC.location.ilike(f"%{location}%"))
+        # Используем общие методы из базового класса для фильтрации по PC
+        query = self._apply_pc_location_filters(query, building, floor, location, pc_model=PC)
+        query = self._apply_pc_search_filter(query, search, pc_model=PC)
+        
+        # Специфичные фильтры для событий
         if date_from:
             query = query.filter(ChangeEvent.timestamp >= date_from)
         if date_to:
             query = query.filter(ChangeEvent.timestamp <= date_to)
-        if search:
-            # Поиск по hostname или pc_id (search уже нормализован на уровне API)
-            search_filter = f"%{search}%"
-            query = query.filter(
-                or_(
-                    PC.hostname.ilike(search_filter),
-                    ChangeEvent.pc_id.ilike(search_filter)
-                )
-            )
         
         return query
     

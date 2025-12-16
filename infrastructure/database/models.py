@@ -247,6 +247,9 @@ class AlertRule(Base):
     # Получатели (хранятся как JSON список email/telegram ID)
     recipients = Column(Text, nullable=False)  # JSON список получателей
     
+    # Группировка email уведомлений (по умолчанию включена)
+    email_grouping_enabled = Column(Boolean, default=True, nullable=False)
+    
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
@@ -290,6 +293,7 @@ class AlertRule(Base):
             'channels': self.get_channels(),
             'filters': self.get_filters(),
             'recipients': self.get_recipients(),
+            'email_grouping_enabled': self.email_grouping_enabled,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

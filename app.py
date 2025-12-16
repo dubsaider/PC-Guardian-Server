@@ -75,12 +75,14 @@ if os.path.exists("static"):
 # ==================== Подключение роутеров ====================
 
 # API роутеры
+from api.routes.health import router as health_router
 from api.routes.auth import router as auth_router
 from api.routes.pcs import router as pcs_router
 from api.routes.events import router as events_router
 from api.routes.stats import router as stats_router
 from api.routes.alert_rules import router as alert_rules_router
 
+app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(pcs_router)
 app.include_router(events_router)

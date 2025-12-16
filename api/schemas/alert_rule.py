@@ -23,6 +23,7 @@ class AlertRuleBase(BaseModel):
     channels: List[str] = Field(["email"], description="Каналы уведомлений: email, telegram")
     filters: Optional[AlertRuleFilterSchema] = Field(None, description="Фильтры правила")
     recipients: List[str] = Field(..., description="Список получателей (email или telegram chat_id)")
+    email_grouping_enabled: bool = Field(True, description="Группировать email уведомления в сводку (true) или отправлять отдельно (false)")
 
 
 class AlertRuleCreate(AlertRuleBase):
@@ -37,6 +38,7 @@ class AlertRuleUpdate(BaseModel):
     channels: Optional[List[str]] = None
     filters: Optional[AlertRuleFilterSchema] = None
     recipients: Optional[List[str]] = None
+    email_grouping_enabled: Optional[bool] = None
 
 
 class AlertRuleResponse(AlertRuleBase):
@@ -54,4 +56,8 @@ class AlertRuleListResponse(BaseModel):
     """Схема списка правил уведомлений"""
     total: int
     items: List[AlertRuleResponse]
+
+
+
+
 

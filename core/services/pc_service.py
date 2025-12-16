@@ -46,6 +46,11 @@ class PCService:
             # Обновляем время последнего контакта
             if last_seen:
                 pc.last_seen = last_seen
+                # Если устройство было offline, но пришла новая конфигурация,
+                # временно возвращаем статус в 'normal' (окончательный статус определится при обработке конфигурации)
+                if pc.status == 'offline':
+                    pc.status = 'normal'
+                    self.logger.info(f"ПК {pc_id} ({hostname}) снова онлайн, статус изменен с 'offline' на 'normal'")
             self.pc_repository.update(pc)
         
         return pc
@@ -77,6 +82,11 @@ class PCService:
             Обновленный объект ПК
         """
         pc.last_seen = last_seen
+        # Если устройство было offline, но обновляется last_seen,
+        # временно возвращаем статус в 'normal' (окончательный статус определится при обработке конфигурации)
+        if pc.status == 'offline':
+            pc.status = 'normal'
+            self.logger.info(f"ПК {pc.pc_id} ({pc.hostname}) снова онлайн, статус изменен с 'offline' на 'normal'")
         self.pc_repository.update(pc)
         return pc
 

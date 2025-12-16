@@ -11,6 +11,7 @@ from infrastructure.database.repositories.pc_repository import PCRepository
 from infrastructure.database.repositories.event_repository import EventRepository
 from api.dependencies import get_current_user
 from api.schemas.stats import StatsResponse
+from core.config import settings
 
 router = APIRouter(prefix="/api/stats", tags=["Stats"])
 
@@ -35,20 +36,20 @@ async def get_stats(
 ):
     """Получить статистику"""
     # Обновляем статус offline перед подсчетом статистики
-    pc_repo.update_offline_status(offline_threshold_minutes=10)
+    pc_repo.update_offline_status(offline_threshold_minutes=settings.offline_threshold_minutes)
     
     total_pcs = pc_repo.count_all()
     normal_pcs = pc_repo.count_all(status='normal')
     changed_pcs = pc_repo.count_all(status='changed')
     
-    # Подсчитываем offline ПК (используем тот же порог - 10 минут)
-    offline_threshold = datetime.utcnow() - timedelta(minutes=10)
+    # Подсчитываем offline ПК (используем настройку из конфига)
+    offline_threshold = datetime.utcnow() - timedelta(minutes=settings.offline_threshold_minutes)
     offline_pcs = db.query(PC).filter(
         PC.last_seen.isnot(None),
         PC.last_seen < offline_threshold
     ).count()
     
-    recent_events = event_repo.count_recent(days=7)
+    recent_events = event_repo.count_recent(days=settings.recent_events_days)
     
     return StatsResponse(
         total_pcs=total_pcs,
@@ -57,6 +58,11 @@ async def get_stats(
         offline_pcs=offline_pcs,
         recent_events=recent_events
     )
+
+
+
+
+
 
 
 

@@ -76,3 +76,8 @@ class AlertRuleRepository:
         self.db.delete(rule)
         self.db.flush()
 
+
+
+
+
+

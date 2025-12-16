@@ -16,6 +16,7 @@ from infrastructure.database.models import (
 from infrastructure.database.repositories.pc_repository import PCRepository
 from infrastructure.database.repositories.config_repository import ConfigRepository
 from infrastructure.database.repositories.event_repository import EventRepository
+from infrastructure.database.unit_of_work import UnitOfWork, unit_of_work
 
 __all__ = [
     'Base',
@@ -29,5 +30,7 @@ __all__ = [
     'PCRepository',
     'ConfigRepository',
     'EventRepository',
+    'UnitOfWork',
+    'unit_of_work',
 ]
 

@@ -104,6 +104,7 @@ class AlertRule:
     channels: List[str] = None  # ["email", "telegram"]
     filters: Optional[AlertRuleFilter] = None
     recipients: List[str] = None  # Список email/telegram ID
+    email_grouping_enabled: bool = True  # Группировать email уведомления в сводку
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -153,6 +154,7 @@ class AlertRule:
             'channels': self.channels,
             'filters': self.filters.to_dict() if self.filters else None,
             'recipients': self.recipients,
+            'email_grouping_enabled': self.email_grouping_enabled,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -172,7 +174,12 @@ class AlertRule:
             channels=data.get('channels', ['email']),
             filters=filters,
             recipients=data.get('recipients', []),
+            email_grouping_enabled=data.get('email_grouping_enabled', True),
             created_at=datetime.fromisoformat(data['created_at']) if data.get('created_at') else None,
             updated_at=datetime.fromisoformat(data['updated_at']) if data.get('updated_at') else None
         )
+
+
+
+
 

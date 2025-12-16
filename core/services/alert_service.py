@@ -73,6 +73,7 @@ class AlertService:
             channels=db_rule.get_channels(),
             filters=filters,
             recipients=db_rule.get_recipients(),
+            email_grouping_enabled=db_rule.email_grouping_enabled,
             created_at=db_rule.created_at,
             updated_at=db_rule.updated_at
         )
@@ -82,7 +83,8 @@ class AlertService:
         db_rule = DBAlertRule(
             name=domain_rule.name,
             user_id=domain_rule.user_id,
-            enabled=domain_rule.enabled
+            enabled=domain_rule.enabled,
+            email_grouping_enabled=domain_rule.email_grouping_enabled
         )
         
         db_rule.set_channels(domain_rule.channels)
@@ -92,4 +94,8 @@ class AlertService:
             db_rule.set_filters(domain_rule.filters.to_dict())
         
         return db_rule
+
+
+
+
 

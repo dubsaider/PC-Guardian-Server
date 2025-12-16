@@ -81,7 +81,7 @@ class EmailHandler:
             self.logger.info(f"Уведомление отправлено по Email: {', '.join(email_to)}")
             return True
         except Exception as e:
-            self.logger.error(f"Ошибка отправки Email: {e}")
+            self.logger.error(f"Ошибка отправки Email: {e}", exc_info=True)
             return False
 
 

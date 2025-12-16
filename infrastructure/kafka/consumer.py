@@ -5,6 +5,7 @@ Kafka Consumer для получения данных от агентов
 import json
 import logging
 import threading
+from datetime import datetime
 from typing import Optional
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
@@ -127,21 +128,72 @@ class PCGuardianConsumer:
                     
                     for topic_partition, messages in message_pack.items():
                         for message in messages:
+                            # #region agent log
+                            try:
+                                with open(r'c:\Users\Vladislav\Projects\PC-Guardian-Server\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                                    f.write(json.dumps({"id":"log_kafka_message_received","timestamp":int(datetime.utcnow().timestamp()*1000),"location":"consumer.py:129","message":"Получено сообщение из Kafka","data":{"offset":message.offset if hasattr(message,'offset') else None,"partition":topic_partition.partition if hasattr(topic_partition,'partition') else None},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}) + '\n')
+                            except: pass
+                            # #endregion
                             try:
                                 config_data = message.value
                                 self.logger.info(f"Received message from Kafka: pc_id={config_data.get('pc_id')}")
+                                # #region agent log
+                                try:
+                                    with open(r'c:\Users\Vladislav\Projects\PC-Guardian-Server\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                                        f.write(json.dumps({"id":"log_kafka_before_process","timestamp":int(datetime.utcnow().timestamp()*1000),"location":"consumer.py:133","message":"Перед обработкой сообщения","data":{"pc_id":config_data.get('pc_id'),"offset":message.offset if hasattr(message,'offset') else None},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}) + '\n')
+                                except: pass
+                                # #endregion
                                 self._process_configuration(config_data)
+                                # #region agent log
+                                try:
+                                    with open(r'c:\Users\Vladislav\Projects\PC-Guardian-Server\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                                        f.write(json.dumps({"id":"log_kafka_after_process","timestamp":int(datetime.utcnow().timestamp()*1000),"location":"consumer.py:133","message":"После успешной обработки сообщения","data":{"pc_id":config_data.get('pc_id'),"offset":message.offset if hasattr(message,'offset') else None},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}) + '\n')
+                                except: pass
+                                # #endregion
                             except Exception as e:
+                                # #region agent log
+                                try:
+                                    with open(r'c:\Users\Vladislav\Projects\PC-Guardian-Server\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                                        f.write(json.dumps({"id":"log_kafka_error","timestamp":int(datetime.utcnow().timestamp()*1000),"location":"consumer.py:160","message":"Ошибка обработки сообщения","data":{"error":str(e),"offset":message.offset if hasattr(message,'offset') else None},"sessionId":"debug-session","runId":"post-fix","hypothesisId":"B"}) + '\n')
+                                except: pass
+                                # #endregion
                                 self.logger.error(f"Ошибка обработки сообщения: {e}", exc_info=True)
+                                # ИСПРАВЛЕНИЕ БАГА B: При ошибке обработки коммитим offset вручную, чтобы не зациклиться
+                                # Это позволяет пропустить проблемное сообщение и продолжить обработку следующих
+                                try:
+                                    self.consumer.commit()
+                                    # #region agent log
+                                    try:
+                                        with open(r'c:\Users\Vladislav\Projects\PC-Guardian-Server\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                                            f.write(json.dumps({"id":"log_kafka_error_committed","timestamp":int(datetime.utcnow().timestamp()*1000),"location":"consumer.py:167","message":"Offset закоммичен после ошибки - сообщение пропущено","data":{"offset":message.offset if hasattr(message,'offset') else None},"sessionId":"debug-session","runId":"post-fix","hypothesisId":"B"}) + '\n')
+                                    except: pass
+                                    # #endregion
+                                except Exception as commit_err:
+                                    self.logger.error(f"Ошибка коммита offset после ошибки обработки: {commit_err}")
                 
                 except KafkaError as e:
+                    # #region agent log
+                    try:
+                        with open(r'c:\Users\Vladislav\Projects\PC-Guardian-Server\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                            f.write(json.dumps({"id":"log_kafka_error_recreate","timestamp":int(datetime.utcnow().timestamp()*1000),"location":"consumer.py:182","message":"Ошибка Kafka - пересоздание consumer с задержкой","data":{"error":str(e)},"sessionId":"debug-session","runId":"post-fix","hypothesisId":"E"}) + '\n')
+                    except: pass
+                    # #endregion
                     self.logger.error(f"Ошибка Kafka: {e}")
-                    # Пересоздаем consumer при ошибке
+                    # ИСПРАВЛЕНИЕ БАГА E: Пересоздаем consumer при ошибке с задержкой, чтобы избежать бесконечного цикла
                     try:
                         self.consumer.close()
                     except:
                         pass
                     self.consumer = None
+                    # Добавляем задержку перед пересозданием (5 секунд)
+                    import time
+                    time.sleep(5)
+                    # #region agent log
+                    try:
+                        with open(r'c:\Users\Vladislav\Projects\PC-Guardian-Server\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                            f.write(json.dumps({"id":"log_kafka_recreate_after_delay","timestamp":int(datetime.utcnow().timestamp()*1000),"location":"consumer.py:195","message":"Пересоздание consumer после задержки","data":{},"sessionId":"debug-session","runId":"post-fix","hypothesisId":"E"}) + '\n')
+                    except: pass
+                    # #endregion
                     self._create_consumer()
                 
         except Exception as e:

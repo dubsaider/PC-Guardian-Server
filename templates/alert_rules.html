@@ -72,6 +72,20 @@
                         </div>
                     </div>
                     
+                    <!-- Настройки группировки email -->
+                    <div class="mb-3" id="emailGroupingContainer" style="display: none;">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="emailGroupingEnabled" checked>
+                            <label class="form-check-label" for="emailGroupingEnabled">
+                                <strong>Группировать email уведомления в сводку</strong>
+                            </label>
+                        </div>
+                        <small class="text-muted d-block mt-1">
+                            Если включено: несколько изменений за короткое время будут объединены в одно письмо-сводку.<br>
+                            Если выключено: каждое изменение будет отправлено отдельным письмом.
+                        </small>
+                    </div>
+                    
                     <!-- Получатели -->
                     <div class="mb-3">
                         <label class="form-label">Получатели *</label>
@@ -229,6 +243,7 @@ function renderRules() {
     html += '<th>Статус</th>';
     html += '<th>Каналы</th>';
     html += '<th>Получатели</th>';
+    html += '<th>Email группировка</th>';
     html += '<th>Фильтры</th>';
     html += '<th>Действия</th>';
     html += '</tr></thead><tbody>';
@@ -246,12 +261,18 @@ function renderRules() {
         
         const recipientsCount = rule.recipients ? rule.recipients.length : 0;
         const filtersInfo = getFiltersInfo(rule.filters);
+        const emailGrouping = rule.channels.includes('email') 
+            ? (rule.email_grouping_enabled !== false 
+                ? '<span class="badge bg-success">Сводка</span>' 
+                : '<span class="badge bg-info">Отдельно</span>')
+            : '<span class="text-muted">-</span>';
         
         html += `<tr>
             <td><strong>${rule.name}</strong></td>
             <td>${statusBadge}</td>
             <td>${channels}</td>
             <td>${recipientsCount} получателей</td>
+            <td>${emailGrouping}</td>
             <td><small>${filtersInfo}</small></td>
             <td>
                 <button class="btn btn-sm btn-primary" onclick="editRule(${rule.id})">
@@ -301,6 +322,8 @@ function showCreateModal() {
     document.getElementById('ruleEnabled').checked = true;
     document.getElementById('channelEmail').checked = true;
     document.getElementById('channelTelegram').checked = false;
+    document.getElementById('emailGroupingEnabled').checked = true;
+    updateEmailGroupingVisibility();
     
     // Сброс фильтров
     document.getElementById('filterBuildings').value = '';
@@ -328,6 +351,8 @@ function editRule(ruleId) {
     // Каналы
     document.getElementById('channelEmail').checked = rule.channels.includes('email');
     document.getElementById('channelTelegram').checked = rule.channels.includes('telegram');
+    document.getElementById('emailGroupingEnabled').checked = rule.email_grouping_enabled !== false;
+    updateEmailGroupingVisibility();
     
     // Фильтры
     if (rule.filters) {
@@ -394,6 +419,11 @@ function saveRule() {
     }
     if (document.getElementById('channelTelegram').checked) {
         ruleData.channels.push('telegram');
+    }
+    
+    // Группировка email (только если email канал выбран)
+    if (document.getElementById('channelEmail').checked) {
+        ruleData.email_grouping_enabled = document.getElementById('emailGroupingEnabled').checked;
     }
     
     // Фильтры
@@ -504,8 +534,31 @@ function deleteRule(ruleId) {
     });
 }
 
+// Показать/скрыть настройку группировки в зависимости от выбранного канала email
+function updateEmailGroupingVisibility() {
+    const emailChecked = document.getElementById('channelEmail').checked;
+    const container = document.getElementById('emailGroupingContainer');
+    if (container) {
+        container.style.display = emailChecked ? 'block' : 'none';
+    }
+}
+
+// Обработчики изменения каналов
+document.addEventListener('DOMContentLoaded', function() {
+    const channelEmail = document.getElementById('channelEmail');
+    if (channelEmail) {
+        channelEmail.addEventListener('change', updateEmailGroupingVisibility);
+        // Инициализация видимости при загрузке
+        updateEmailGroupingVisibility();
+    }
+});
+
 // Загрузка при старте
 loadRules();
 </script>
 {% endblock %}
+
+
+
+
 

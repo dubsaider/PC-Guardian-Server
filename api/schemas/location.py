@@ -22,3 +22,8 @@ class BulkUpdateLocationResponse(BaseModel):
     errors: List[str] = []
 
 
+
+
+
+
+

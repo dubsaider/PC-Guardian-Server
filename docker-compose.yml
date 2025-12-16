@@ -92,6 +92,10 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
       # EMAIL_TO: ${EMAIL_TO:-}
+
+      EMAIL_GROUPING_ENABLED: ${EMAIL_GROUPING_ENABLED:-}
+      EMAIL_GROUPING_WINDOW_SECONDS: ${EMAIL_GROUPING_WINDOW_SECONDS:-}
+
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -99,7 +103,7 @@ services:
       - pc-guardian-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/stats"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

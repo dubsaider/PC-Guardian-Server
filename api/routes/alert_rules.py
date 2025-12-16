@@ -39,7 +39,8 @@ def _domain_to_db(domain_rule: AlertRule) -> DBAlertRule:
     db_rule = DBAlertRule(
         name=domain_rule.name,
         user_id=domain_rule.user_id,
-        enabled=domain_rule.enabled
+        enabled=domain_rule.enabled,
+        email_grouping_enabled=domain_rule.email_grouping_enabled
     )
     db_rule.set_channels(domain_rule.channels)
     db_rule.set_recipients(domain_rule.recipients)
@@ -64,6 +65,7 @@ def _db_to_response(db_rule: DBAlertRule) -> AlertRuleResponse:
         channels=db_rule.get_channels(),
         filters=filters,
         recipients=db_rule.get_recipients(),
+        email_grouping_enabled=db_rule.email_grouping_enabled,
         created_at=db_rule.created_at,
         updated_at=db_rule.updated_at
     )
@@ -126,7 +128,8 @@ async def create_alert_rule(
         enabled=rule_data.enabled,
         channels=rule_data.channels,
         filters=filters,
-        recipients=rule_data.recipients
+        recipients=rule_data.recipients,
+        email_grouping_enabled=rule_data.email_grouping_enabled
     )
     
     # Преобразуем в DB модель и сохраняем
@@ -169,6 +172,8 @@ async def update_alert_rule(
     if rule_data.filters is not None:
         filters = AlertRuleFilter.from_dict(rule_data.filters.dict())
         rule.set_filters(filters.to_dict())
+    if rule_data.email_grouping_enabled is not None:
+        rule.email_grouping_enabled = rule_data.email_grouping_enabled
     
     alert_rule_repo.update(rule)
     db.commit()

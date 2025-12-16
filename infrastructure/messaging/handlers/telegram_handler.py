@@ -64,7 +64,7 @@ class TelegramHandler:
                 response.raise_for_status()
                 self.logger.info(f"Уведомление отправлено в Telegram: {chat_id}")
             except Exception as e:
-                self.logger.error(f"Ошибка отправки в Telegram для chat_id {chat_id}: {e}")
+                self.logger.error(f"Ошибка отправки в Telegram для chat_id {chat_id}: {e}", exc_info=True)
                 success = False
         
         return success

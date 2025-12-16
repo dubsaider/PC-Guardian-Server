@@ -10,6 +10,7 @@ from infrastructure.database.session import get_db
 from infrastructure.database.repositories.pc_repository import PCRepository
 from api.dependencies import get_current_user
 from web.dependencies import get_templates
+from core.config import settings
 from jinja2 import Environment
 
 router = APIRouter()
@@ -31,7 +32,7 @@ async def pc_detail(
 ):
     """Страница детального просмотра ПК"""
     # Обновляем статус offline перед получением информации
-    pc_repo.update_offline_status(offline_threshold_minutes=10)
+    pc_repo.update_offline_status(offline_threshold_minutes=settings.offline_threshold_minutes)
     
     pc = pc_repo.find_by_id(pc_id)
     if not pc:
@@ -39,6 +40,11 @@ async def pc_detail(
     
     template = templates.get_template("pc_detail.html")
     return HTMLResponse(template.render(request=request, user=current_user, pc=pc))
+
+
+
+
+
 
 
 
